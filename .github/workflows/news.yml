@@ -33,6 +33,7 @@ jobs:
           if [ -z "$FEISHU_WEBHOOK_URL" ]; then
             echo "::error::FEISHU_WEBHOOK_URL secret not set"; exit 1;
           fi
+      
       - name: Run ONE_SHOT cycle
         run: |
           python adailocal.py

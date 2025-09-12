@@ -37,25 +37,27 @@ RSS_FEEDS = [
 # keywords = ["Xiaomi", "POCO", "AI", "EV", "smartphone", "gadget", "tech"]
 TIMEOUT = (5, 15)
 
-# Persistent dedup across runs
-SEEN_FILE = "seen_items.txt"
+# Time-based dedup (only consider items from last 24 hours)
+from datetime import datetime, timedelta
 
-def load_seen():
+def is_recent_news(published_at_str, hours=24):
+    """Check if news is recent enough to be considered for deduplication"""
+    if not published_at_str:
+        return True  # If no date, consider it recent
+    
     try:
-        with open(SEEN_FILE, 'r', encoding='utf-8') as f:
-            return set(line.strip() for line in f if line.strip())
-    except FileNotFoundError:
-        return set()
+        published_at = dateparser.parse(published_at_str)
+        if published_at is None:
+            return True
+        
+        # Check if published within last N hours
+        cutoff = datetime.now(published_at.tzinfo) - timedelta(hours=hours)
+        return published_at >= cutoff
+    except Exception:
+        return True  # If parsing fails, consider it recent
 
-def save_seen(seen_set):
-    try:
-        with open(SEEN_FILE, 'w', encoding='utf-8') as f:
-            for item in seen_set:
-                f.write(f"{item}\n")
-    except Exception as e:
-        print(f"Warning: Could not save seen items: {e}")
-
-SEEN = load_seen()
+# In-memory dedup for current run only (time-based filtering handles cross-run)
+SEEN = set()
 
 def get_tenant_access_token(app_id, app_secret):
     url = f"{BASE}/open-apis/auth/v3/tenant_access_token/internal"
@@ -192,16 +194,25 @@ def collect_once():
                 link = (e.get("link") or "").strip()
                 title = (e.get("title") or "").strip()
                 if not title: continue
-                k = _key(link, title)
-                if k in SEEN: continue
-                SEEN.add(k)
-                desc = e.get("summary") or e.get("description") or ""
-                body = _clean(desc)
+                
+                # Get publication date first
                 pub = e.get("published") or e.get("updated") or ""
                 try:
                     published_at = dateparser.parse(pub).isoformat()
                 except Exception:
                     published_at = ""
+                
+                # Only process recent news (last 24 hours)
+                if not is_recent_news(published_at, hours=24):
+                    continue
+                
+                k = _key(link, title)
+                if k in SEEN: continue
+                SEEN.add(k)
+                
+                desc = e.get("summary") or e.get("description") or ""
+                body = _clean(desc)
+                
                 items.append({
                     "title": title,
                     "url": _norm(link),
@@ -217,8 +228,6 @@ def collect_once():
             print(f"Error fetching {feed_url}: {e}")
             continue
     
-    # Save seen items after each collection
-    save_seen(SEEN)
     return items
 
 def main():
