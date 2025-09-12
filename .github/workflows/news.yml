@@ -9,7 +9,7 @@ jobs:
   run-news-bot:
     runs-on: ubuntu-latest
     env:
-      FEISHU_WEBHOOK_URL: 
+      FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
       ONE_SHOT: '1'
       MAX_PUSH_PER_CYCLE: '1'
       SEND_INTERVAL_SEC: '1.0'
