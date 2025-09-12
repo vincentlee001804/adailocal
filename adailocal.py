@@ -160,6 +160,38 @@ def is_recent_news(published_at_str, hours=2):
 SEEN = set()
 SENT_URLS = set()  # Track URLs that have been sent to prevent repeats
 
+# Persistent deduplication file
+SENT_NEWS_FILE = "sent_news.txt"
+
+def load_sent_news():
+    """Load previously sent news URLs from file"""
+    sent_urls = set()
+    try:
+        if os.path.exists(SENT_NEWS_FILE):
+            with open(SENT_NEWS_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    url = line.strip()
+                    if url:
+                        sent_urls.add(url)
+        print(f"Loaded {len(sent_urls)} previously sent news URLs")
+    except Exception as e:
+        print(f"Error loading sent news: {e}")
+    return sent_urls
+
+def save_sent_news(sent_urls):
+    """Save sent news URLs to file"""
+    try:
+        with open(SENT_NEWS_FILE, 'w', encoding='utf-8') as f:
+            for url in sorted(sent_urls):
+                f.write(f"{url}\n")
+        print(f"Saved {len(sent_urls)} sent news URLs to file")
+    except Exception as e:
+        print(f"Error saving sent news: {e}")
+
+def is_news_already_sent(url, sent_urls):
+    """Check if news URL has already been sent"""
+    return url in sent_urls
+
 def get_tenant_access_token(app_id, app_secret):
     url = f"{BASE}/open-apis/auth/v3/tenant_access_token/internal"
     headers = {'Content-Type': 'application/json; charset=utf-8'}
@@ -370,6 +402,9 @@ def main():
 
     ONE_SHOT = os.environ.get("ONE_SHOT", "0") == "1"
 
+    # Load previously sent news for persistent deduplication
+    sent_news_urls = load_sent_news()
+    
     while True:
         try:
             sent = 0
@@ -389,7 +424,13 @@ def main():
             print(f"=== Top 3 most recent news items ===")
             for i, item in enumerate(items[:3]):
                 print(f"{i+1}. {item['title'][:60]}... (Published: {item.get('published_at', 'No date')})")
+            
+            # Process items and skip already sent news
             for it in items:
+                # Check if this news has already been sent
+                if is_news_already_sent(it['url'], sent_news_urls):
+                    print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
+                    continue
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
                 summary = ai_summarize(it["title"], it["body"]) if use_ai else summarize(it["title"], it["body"])
                 category = classify(it["title"], summary)
@@ -421,13 +462,19 @@ def main():
                         token = get_tenant_access_token(app_id, app_secret)
                         send_card_message(token, chat_id, title, content)
                 
-                # Mark this URL as sent
+                # Mark this URL as sent (both in-memory and persistent)
                 SENT_URLS.add(it['url'])
+                sent_news_urls.add(it['url'])
+                print(f"✅ Sent news: {it['title'][:50]}...")
                 sent += 1
                 if sent >= MAX_PER_CYCLE:
                     print(f"Reached MAX_PER_CYCLE={MAX_PER_CYCLE}, stop sending this round.")
                     break
                 time.sleep(SEND_INTERVAL_SEC)
+            
+            # Save sent news URLs to file after each cycle
+            save_sent_news(sent_news_urls)
+            
         except Exception as e:
             print(f"loop_error: {e}")
         if ONE_SHOT:

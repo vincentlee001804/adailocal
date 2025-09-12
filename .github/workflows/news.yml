@@ -28,6 +28,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install requests feedparser beautifulsoup4 python-dateutil sumy nltk lxml
 
+      - name: Cache sent news file
+        uses: actions/cache@v4
+        with:
+          path: sent_news.txt
+          key: sent-news-${{ github.run_number }}
+          restore-keys: |
+            sent-news-
+
       - name: Validate secrets
         run: |
           if [ -z "$FEISHU_WEBHOOK_URL" ]; then
