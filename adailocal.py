@@ -22,7 +22,7 @@ RSS_FEEDS = [
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
-    "https://www.thestar.com.my/rss/News/Nation",
+    # "https://www.thestar.com.my/rss/News/Nation",
     "https://www.freemalaysiatoday.com/category/nation/feed/",
     "https://www.astroawani.com/rss/english",
     "https://www.astroawani.com/rss/terkini",
@@ -31,6 +31,11 @@ RSS_FEEDS = [
     #"https://www.sinchew.com.my/feed/",
     #"https://www.chinapress.com.my/feed/",
     #"https://www.orientaldaily.com.my/feed/",
+    # Additional reliable Malaysian news sources
+    "https://www.nst.com.my/rss.xml",
+    "https://www.bernama.com/en/rss.php",
+    "https://www.malaysiakini.com/rss/en/news.rss",
+    "https://www.theedgemalaysia.com/rss.xml",
 ]
 
 # Keywords to filter
