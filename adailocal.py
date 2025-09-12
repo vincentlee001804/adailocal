@@ -58,6 +58,11 @@ def is_recent_news(published_at_str, hours=2):
             print(f"  Future date detected: {published_at}, rejecting")
             return False
         
+        # Also reject dates that are clearly wrong (like 2025 when we're in 2024)
+        if published_at.year > 2024:
+            print(f"  Suspicious future year detected: {published_at.year}, rejecting")
+            return False
+        
         # Check if published within last N hours
         cutoff = now - timedelta(hours=hours)
         is_recent = published_at >= cutoff
@@ -70,6 +75,7 @@ def is_recent_news(published_at_str, hours=2):
 
 # In-memory dedup for current run only (time-based filtering handles cross-run)
 SEEN = set()
+SENT_URLS = set()  # Track URLs that have been sent to prevent repeats
 
 def get_tenant_access_token(app_id, app_secret):
     url = f"{BASE}/open-apis/auth/v3/tenant_access_token/internal"
@@ -209,10 +215,13 @@ def collect_once():
                 
                 # Get publication date first
                 pub = e.get("published") or e.get("updated") or ""
+                print(f"  Raw date: {pub}")
                 try:
                     published_at = dateparser.parse(pub).isoformat()
-                except Exception:
+                    print(f"  Parsed date: {published_at}")
+                except Exception as e:
                     published_at = ""
+                    print(f"  Date parsing failed: {e}")
                 
                 # Only process recent news (last 24 hours for testing)
                 print(f"  Checking: {title[:50]}...")
@@ -221,8 +230,15 @@ def collect_once():
                     continue
                 
                 k = _key(link, title)
-                if k in SEEN: continue
+                if k in SEEN: 
+                    print(f"  Already seen this item, skipping")
+                    continue
                 SEEN.add(k)
+                
+                # Also check if we've already sent this URL
+                if link in SENT_URLS:
+                    print(f"  URL already sent, skipping: {link}")
+                    continue
                 
                 desc = e.get("summary") or e.get("description") or ""
                 body = _clean(desc)
@@ -289,6 +305,9 @@ def main():
                     else:
                         token = get_tenant_access_token(app_id, app_secret)
                         send_card_message(token, chat_id, title, content)
+                
+                # Mark this URL as sent
+                SENT_URLS.add(it['url'])
                 sent += 1
                 if sent >= MAX_PER_CYCLE:
                     print(f"Reached MAX_PER_CYCLE={MAX_PER_CYCLE}, stop sending this round.")
