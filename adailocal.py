@@ -40,20 +40,27 @@ TIMEOUT = (5, 15)
 # Time-based dedup (only consider items from last 24 hours)
 from datetime import datetime, timedelta
 
-def is_recent_news(published_at_str, hours=24):
+def is_recent_news(published_at_str, hours=2):
     """Check if news is recent enough to be considered for deduplication"""
     if not published_at_str:
+        print(f"  No date found, considering recent")
         return True  # If no date, consider it recent
     
     try:
         published_at = dateparser.parse(published_at_str)
         if published_at is None:
+            print(f"  Date parsing failed, considering recent")
             return True
         
         # Check if published within last N hours
-        cutoff = datetime.now(published_at.tzinfo) - timedelta(hours=hours)
-        return published_at >= cutoff
-    except Exception:
+        now = datetime.now(published_at.tzinfo) if published_at.tzinfo else datetime.now()
+        cutoff = now - timedelta(hours=hours)
+        is_recent = published_at >= cutoff
+        
+        print(f"  Date: {published_at}, Cutoff: {cutoff}, Recent: {is_recent}")
+        return is_recent
+    except Exception as e:
+        print(f"  Date parsing error: {e}, considering recent")
         return True  # If parsing fails, consider it recent
 
 # In-memory dedup for current run only (time-based filtering handles cross-run)
@@ -202,8 +209,10 @@ def collect_once():
                 except Exception:
                     published_at = ""
                 
-                # Only process recent news (last 24 hours)
-                if not is_recent_news(published_at, hours=24):
+                # Only process recent news (last 2 hours)
+                print(f"  Checking: {title[:50]}...")
+                if not is_recent_news(published_at, hours=2):
+                    print(f"  Skipping old news: {title[:50]}...")
                     continue
                 
                 k = _key(link, title)
