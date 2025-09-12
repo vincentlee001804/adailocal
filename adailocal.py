@@ -242,11 +242,16 @@ def collect_once():
 def main():
     webhook_url = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
     webhook_secret = os.environ.get("FEISHU_WEBHOOK_SECRET", "").strip()
+    
+    # Test mode - don't actually send if webhook URL is placeholder
+    TEST_MODE = webhook_url == "your_webhook_url_here" or not webhook_url
+    if TEST_MODE:
+        print("=== RUNNING IN TEST MODE (no actual sending) ===")
 
     if not webhook_url:
-        app_id = os.environ["FEISHU_APP_ID"]
-        app_secret = os.environ["FEISHU_APP_SECRET"]
-        chat_id = os.environ["FEISHU_CHAT_ID"]
+        app_id = os.environ.get("FEISHU_APP_ID", "")
+        app_secret = os.environ.get("FEISHU_APP_SECRET", "")
+        chat_id = os.environ.get("FEISHU_CHAT_ID", "")
 
     MAX_PER_CYCLE = int(os.environ.get("MAX_PUSH_PER_CYCLE", "1"))
     SEND_INTERVAL_SEC = float(os.environ.get("SEND_INTERVAL_SEC", "1.0"))
@@ -267,11 +272,16 @@ def main():
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
                 content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
-                if webhook_url:
-                    send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
+                
+                if TEST_MODE:
+                    print(f"WOULD SEND: {title}")
+                    print(f"CONTENT: {content[:100]}...")
                 else:
-                    token = get_tenant_access_token(app_id, app_secret)
-                    send_card_message(token, chat_id, title, content)
+                    if webhook_url:
+                        send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
+                    else:
+                        token = get_tenant_access_token(app_id, app_secret)
+                        send_card_message(token, chat_id, title, content)
                 sent += 1
                 if sent >= MAX_PER_CYCLE:
                     print(f"Reached MAX_PER_CYCLE={MAX_PER_CYCLE}, stop sending this round.")
