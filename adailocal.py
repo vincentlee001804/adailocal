@@ -10,6 +10,10 @@ from dateutil import parser as dateparser
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
+try:
+    import nltk  # For tokenizers used by sumy
+except Exception:
+    nltk = None
 
 # Feishu China base (keep this)
 BASE = "https://open.f.mioffice.cn"
@@ -17,7 +21,7 @@ BASE = "https://open.f.mioffice.cn"
 RSS_FEEDS = [
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
-    "https://www.lowyat.net/feed/"
+    "https://www.lowyat.net/feed/",
     "https://www.thestar.com.my/rss/News/Nation",
     "https://www.freemalaysiatoday.com/category/nation/feed/",
     "https://www.astroawani.com/rss/english",
@@ -124,13 +128,35 @@ def summarize(title, body):
 
 def ai_summarize(title, body, sentences=3):
     text = (body or "").strip() or title
-    parser = PlaintextParser.from_string(text, Tokenizer("english"))
-    summarizer = TextRankSummarizer()
-    sents = [str(s) for s in summarizer(parser.document, sentences)]
-    if not sents:
-        return (body or title)[:320]
-    res = " ".join(sents)
-    return res[:800]  # keep card compact
+    try:
+        # Ensure NLTK punkt is available (needed by sumy Tokenizer)
+        if nltk is not None:
+            try:
+                nltk.data.find('tokenizers/punkt')
+            except LookupError:
+                try:
+                    nltk.download('punkt', quiet=True)
+                except Exception:
+                    pass
+            # Newer NLTK may require 'punkt_tab' as well
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except Exception:
+                try:
+                    nltk.download('punkt_tab', quiet=True)
+                except Exception:
+                    pass
+
+        parser = PlaintextParser.from_string(text, Tokenizer("english"))
+        summarizer = TextRankSummarizer()
+        sents = [str(s) for s in summarizer(parser.document, sentences)]
+        if not sents:
+            return (body or title)[:320]
+        res = " ".join(sents)
+        return res[:800]  # keep card compact
+    except Exception:
+        # Fallback to simple heuristic summary if NLTK/sumy unavailable
+        return summarize(title, body)
 
 def collect_once():
     items = []
