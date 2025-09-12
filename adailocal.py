@@ -52,8 +52,13 @@ def is_recent_news(published_at_str, hours=2):
             print(f"  Date parsing failed, considering recent")
             return True
         
-        # Check if published within last N hours
+        # Check if date is in the future (reject future dates)
         now = datetime.now(published_at.tzinfo) if published_at.tzinfo else datetime.now()
+        if published_at > now:
+            print(f"  Future date detected: {published_at}, rejecting")
+            return False
+        
+        # Check if published within last N hours
         cutoff = now - timedelta(hours=hours)
         is_recent = published_at >= cutoff
         
@@ -209,9 +214,9 @@ def collect_once():
                 except Exception:
                     published_at = ""
                 
-                # Only process recent news (last 2 hours)
+                # Only process recent news (last 24 hours for testing)
                 print(f"  Checking: {title[:50]}...")
-                if not is_recent_news(published_at, hours=2):
+                if not is_recent_news(published_at, hours=24):
                     print(f"  Skipping old news: {title[:50]}...")
                     continue
                 
@@ -261,7 +266,9 @@ def main():
     while True:
         try:
             sent = 0
+            print(f"=== Starting collection cycle ===")
             items = collect_once()
+            print(f"=== Found {len(items)} total items ===")
             # Prefer newest first
             def _k(it):
                 return it.get("published_at") or ""
