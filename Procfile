@@ -1,0 +1,2 @@
+worker: python adailocal.py
+

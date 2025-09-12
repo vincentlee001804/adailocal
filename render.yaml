@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: adailocal-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python adailocal.py
+    envVars:
+      - key: FEISHU_WEBHOOK_URL
+        sync: false
+      - key: MAX_PUSH_PER_CYCLE
+        value: "1"
+      - key: SEND_INTERVAL_SEC
+        value: "1.0"
+      # - key: USE_AI_SUMMARY
+      #   value: "1"
+
