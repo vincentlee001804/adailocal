@@ -31,22 +31,10 @@ RSS_FEEDS = [
 
 # Keywords to filter
 # keywords = ["Xiaomi", "POCO", "AI", "EV", "smartphone", "gadget", "tech"]
-SEEN_FILE = "seen_items.txt"
-# TIMEOUT = (5, 15)
+TIMEOUT = (5, 15)
 
-def load_seen():
-    try:
-        with open(SEEN_FILE, 'r', encoding='utf-8') as f:
-            return set(line.strip() for line in f if line.strip())
-    except FileNotFoundError:
-        return set()
-
-def save_seen(seen_set):
-    with open(SEEN_FILE, 'w', encoding='utf-8') as f:
-        for item in seen_set:
-            f.write(item + '\n')
-
-SEEN = load_seen()
+# In-memory dedup per run only
+SEEN = set()
 
 def get_tenant_access_token(app_id, app_secret):
     url = f"{BASE}/open-apis/auth/v3/tenant_access_token/internal"
@@ -186,8 +174,6 @@ def collect_once():
             print(f"Error fetching {feed_url}: {e}")
             continue
     
-    # Save seen items after each collection
-    save_seen(SEEN)
     return items
 
 def main():
