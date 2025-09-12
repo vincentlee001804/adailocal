@@ -14,7 +14,7 @@ try:
     import nltk  # For tokenizers used by sumy
 except Exception:
     nltk = None
-
+ 
 # Feishu China base (keep this)
 BASE = "https://open.f.mioffice.cn"
 
@@ -224,9 +224,9 @@ def collect_once():
                     published_at = ""
                     print(f"  Date parsing failed: {e}")
                 
-                # Only process recent news (last 24 hours for testing)
+                # Only process recent news (last 6 hours for latest news)
                 print(f"  Checking: {title[:50]}...")
-                if not is_recent_news(published_at, hours=24):
+                if not is_recent_news(published_at, hours=6):
                     print(f"  Skipping old news: {title[:50]}...")
                     continue
                 
@@ -286,16 +286,40 @@ def main():
             print(f"=== Starting collection cycle ===")
             items = collect_once()
             print(f"=== Found {len(items)} total items ===")
-            # Prefer newest first
+            # Sort by published_at to get the absolute latest news first
             def _k(it):
-                return it.get("published_at") or ""
+                published_at = it.get("published_at") or ""
+                # If no date, put at end (lowest priority)
+                if not published_at:
+                    return "1970-01-01T00:00:00"
+                return published_at
             items.sort(key=_k, reverse=True)
+            
+            # Log the top 3 most recent items for verification
+            print(f"=== Top 3 most recent news items ===")
+            for i, item in enumerate(items[:3]):
+                print(f"{i+1}. {item['title'][:60]}... (Published: {item.get('published_at', 'No date')})")
             for it in items:
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
                 summary = ai_summarize(it["title"], it["body"]) if use_ai else summarize(it["title"], it["body"])
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
-                content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                
+                # Add publication time to content
+                pub_time = it.get("published_at", "")
+                if pub_time:
+                    try:
+                        from datetime import datetime
+                        pub_dt = dateparser.parse(pub_time)
+                        if pub_dt:
+                            time_str = pub_dt.strftime("%Y-%m-%d %H:%M")
+                            content = f"{summary}\n\n⏰ {time_str}\n来源：{it['source']}  {it['url']}"
+                        else:
+                            content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                    except:
+                        content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                else:
+                    content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
                 
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
