@@ -58,8 +58,9 @@ def is_recent_news(published_at_str, hours=2):
             print(f"  Future date detected: {published_at}, rejecting")
             return False
         
-        # Also reject dates that are clearly wrong (like 2025 when we're in 2024)
-        if published_at.year > 2024:
+        # Also reject dates that are clearly wrong (like 2026+ when we're in 2025)
+        current_year = datetime.now().year
+        if published_at.year > current_year:
             print(f"  Suspicious future year detected: {published_at.year}, rejecting")
             return False
         
