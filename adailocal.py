@@ -188,6 +188,8 @@ def main():
     MAX_PER_CYCLE = int(os.environ.get("MAX_PUSH_PER_CYCLE", "1"))
     SEND_INTERVAL_SEC = float(os.environ.get("SEND_INTERVAL_SEC", "1.0"))
 
+    ONE_SHOT = os.environ.get("ONE_SHOT", "0") == "1"
+
     while True:
         try:
             sent = 0
@@ -214,7 +216,9 @@ def main():
                 time.sleep(SEND_INTERVAL_SEC)
         except Exception as e:
             print(f"loop_error: {e}")
-        time.sleep(120)  # every 10 minutes
+        if ONE_SHOT:
+            break
+        time.sleep(600)  # every 10 minutes
 
 if __name__ == "__main__":
     main()
