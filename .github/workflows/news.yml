@@ -28,7 +28,7 @@ jobs:
           ONE_SHOT: '1'
           MAX_PUSH_PER_CYCLE: '1'
           SEND_INTERVAL_SEC: '1.0'
-          # USE_AI_SUMMARY: '1'
+          USE_AI_SUMMARY: '1'
         run: |
           python adailocal.py
 
