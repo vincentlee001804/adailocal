@@ -28,11 +28,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install requests feedparser beautifulsoup4 python-dateutil sumy nltk lxml
 
-      # - name: Validate secrets
-      #   run: |
-      #     if [ -z "$FEISHU_WEBHOOK_URL" ]; then
-      #       echo "::error::FEISHU_WEBHOOK_URL secret not set"; exit 1;
-      #     fi
+      - name: Validate secrets
+        run: |
+          if [ -z "$FEISHU_WEBHOOK_URL" ]; then
+            echo "::error::FEISHU_WEBHOOK_URL secret not set"; exit 1;
+          fi
       
       - name: Run ONE_SHOT cycle
         run: |
