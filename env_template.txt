@@ -1,0 +1,17 @@
+# PythonAnywhere Environment Variables Template
+# Copy this file to .env and fill in your actual values
+
+# Feishu Webhook URL (required)
+FEISHU_WEBHOOK_URL=your_webhook_url_here
+
+# Bot Configuration
+ONE_SHOT=1
+MAX_PUSH_PER_CYCLE=1
+SEND_INTERVAL_SEC=1.0
+USE_AI_SUMMARY=1
+
+# Optional: Feishu App Credentials (if not using webhook)
+# FEISHU_APP_ID=your_app_id
+# FEISHU_APP_SECRET=your_app_secret
+# FEISHU_CHAT_ID=your_chat_id
+# FEISHU_BASE_URL=https://open.f.mioffice.cn
