@@ -35,23 +35,30 @@ except Exception:
 BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
+    # Primary tech-focused feeds (most reliable)
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
-    # "https://www.thestar.com.my/rss/News/Nation",
+    
+    # Fallback feeds that are more likely to work on PythonAnywhere
+    "https://feeds.feedburner.com/soyacincau",
+    "https://www.nst.com.my/rss.xml",
+    "https://www.malaysiakini.com/rss/en/news.rss",
+    
+    # Additional feeds (may have network restrictions)
     "https://www.freemalaysiatoday.com/category/nation/feed/",
     "https://www.astroawani.com/rss/english",
     "https://www.astroawani.com/rss/terkini",
     "https://www.sinarharian.com.my/rss/terkini",
     "https://www.hmetro.com.my/terkini.rss",
+    "https://www.bernama.com/en/rss.php",
+    "https://www.theedgemalaysia.com/rss.xml",
+    
+    # Commented out feeds that may not work on PythonAnywhere
+    # "https://www.thestar.com.my/rss/News/Nation",
     #"https://www.sinchew.com.my/feed/",
     #"https://www.chinapress.com.my/feed/",
     #"https://www.orientaldaily.com.my/feed/",
-    # Additional reliable Malaysian news sources
-    "https://www.nst.com.my/rss.xml",
-    "https://www.bernama.com/en/rss.php",
-    "https://www.malaysiakini.com/rss/en/news.rss",
-    "https://www.theedgemalaysia.com/rss.xml",
 ]
 
 # Tech keywords to filter - only tech-related news will be pushed
@@ -331,9 +338,28 @@ def collect_once():
     for feed_url in RSS_FEEDS:
         try:
             print(f"Fetching: {feed_url}")
-            feed = feedparser.parse(feed_url)
+            
+            # Add headers to mimic a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            # Try to fetch with requests first, then parse with feedparser
+            try:
+                response = requests.get(feed_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    feed = feedparser.parse(response.content)
+                else:
+                    print(f"HTTP {response.status_code} for {feed_url}")
+                    feed = feedparser.parse(feed_url)
+            except Exception as e:
+                print(f"Request failed for {feed_url}: {e}")
+                feed = feedparser.parse(feed_url)
+            
             if hasattr(feed, 'bozo') and feed.bozo:
                 print(f"Feed parse warning: {feed_url}")
+                print(f"Bozo exception: {getattr(feed, 'bozo_exception', 'Unknown error')}")
+            
             source_name = (feed.feed.get("title", "") or "").strip()
             if not source_name:
                 source_name = feed_url.split('/')[-1] or "Unknown"
