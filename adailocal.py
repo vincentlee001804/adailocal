@@ -219,44 +219,99 @@ def read_article_content(url):
     """Read and extract the main content from an article URL"""
     try:
         print(f"  📖 Reading article: {url}")
+        
+        # More comprehensive headers to avoid blocking
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         }
         
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+        response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        print(f"  📡 Response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"  ❌ HTTP error: {response.status_code}")
+            return ""
+        
+        # Check if we got HTML content
+        content_type = response.headers.get('content-type', '').lower()
+        if 'html' not in content_type:
+            print(f"  ❌ Not HTML content: {content_type}")
+            return ""
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Remove script and style elements
-        for script in soup(["script", "style", "nav", "header", "footer", "aside"]):
-            script.decompose()
+        # Remove unwanted elements
+        for element in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"]):
+            element.decompose()
         
-        # Try to find main content areas
+        # More comprehensive content selectors for Malaysian news sites
         content_selectors = [
-            'article', '.article-content', '.post-content', '.entry-content',
-            '.content', '.main-content', '.story-content', '.article-body',
-            'main', '.main', '#content', '#main', '.post', '.entry'
+            # Common article selectors
+            'article', '.article-content', '.post-content', '.entry-content', '.story-content',
+            '.content', '.main-content', '.article-body', '.post-body', '.entry-body',
+            'main', '.main', '#content', '#main', '.post', '.entry', '.story',
+            
+            # Malaysian news site specific selectors
+            '.article-text', '.article-body-text', '.story-text', '.news-content',
+            '.post-text', '.entry-text', '.content-text', '.article-main',
+            
+            # Generic content areas
+            '.text', '.body', '.article', '.post', '.entry', '.story',
+            'p', '.paragraph', '.content-paragraph'
         ]
         
         content = ""
         for selector in content_selectors:
             elements = soup.select(selector)
             if elements:
-                content = " ".join([elem.get_text() for elem in elements])
-                break
+                # Get text from all matching elements
+                text_parts = []
+                for elem in elements:
+                    text = elem.get_text(strip=True)
+                    if len(text) > 50:  # Only include substantial text blocks
+                        text_parts.append(text)
+                
+                if text_parts:
+                    content = " ".join(text_parts)
+                    print(f"  🎯 Found content with selector: {selector}")
+                    break
         
-        # If no specific content area found, get all text
-        if not content:
+        # If no specific content found, try to get all paragraph text
+        if not content or len(content) < 100:
+            paragraphs = soup.find_all('p')
+            if paragraphs:
+                content = " ".join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20])
+                print(f"  📝 Using paragraph text: {len(paragraphs)} paragraphs")
+        
+        # Final fallback - get all text
+        if not content or len(content) < 100:
             content = soup.get_text()
+            print(f"  🔄 Using all text as fallback")
         
         # Clean up the content
         content = " ".join(content.split())  # Remove extra whitespace
-        content = content[:8000]  # Limit to 8000 characters for API
+        
+        # Limit content length for API
+        if len(content) > 8000:
+            content = content[:8000]
+            print(f"  ✂️  Truncated to 8000 characters")
         
         print(f"  ✅ Article content extracted: {len(content)} characters")
+        
+        # Debug: show first 200 characters
+        if content:
+            print(f"  📄 Content preview: {content[:200]}...")
+        
         return content
         
+    except requests.exceptions.RequestException as e:
+        print(f"  ❌ Request error: {e}")
+        return ""
     except Exception as e:
         print(f"  ❌ Error reading article: {e}")
         return ""
