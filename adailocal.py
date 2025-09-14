@@ -195,15 +195,24 @@ def _gen_webhook_sign(secret, timestamp):
 	return base64.b64encode(digest).decode("utf-8")
 
 def send_card_via_webhook(webhook_url, title, content, secret=None):
-	card = _build_card(title, content)
-	payload = { "msg_type": "interactive", "card": card }
+	# Try simple text message first to avoid keyword issues
+	simple_payload = { 
+		"msg_type": "text", 
+		"content": {
+			"text": f"{title}\n\n{content}"
+		}
+	}
+	
 	# Optional signing
 	if secret:
 		ts = str(int(time.time()))
 		sign = _gen_webhook_sign(secret, ts)
-		payload.update({ "timestamp": ts, "sign": sign })
-	r = requests.post(webhook_url, json=payload, timeout=TIMEOUT)
+		simple_payload.update({ "timestamp": ts, "sign": sign })
+	
+	print(f"  📤 Trying simple text message first...")
+	r = requests.post(webhook_url, json=simple_payload, timeout=TIMEOUT)
 	print(f"  📡 Webhook response status: {r.status_code}")
+	
 	try:
 		data = r.json()
 		print(f"  📋 Webhook response: {data}")
@@ -211,12 +220,42 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 		if isinstance(data, dict):
 			code = data.get("code")
 			if code == 0:
-				print(f"  ✅ Webhook success: {data}")
+				print(f"  ✅ Webhook success with text message: {data}")
+				return
+			else:
+				print(f"  ⚠️  Text message failed (code {code}): {data.get('msg', 'Unknown error')}")
+				print(f"  🔄 Trying card format...")
+		else:
+			print(f"  ✅ Webhook success with text message: {data}")
+			return
+	except Exception as e:
+		print(f"  ⚠️  Text message error: {r.status_code} - {r.text[:200]}...")
+		print(f"  🔄 Trying card format...")
+	
+	# Fallback to card format
+	card = _build_card(title, content)
+	card_payload = { "msg_type": "interactive", "card": card }
+	# Optional signing
+	if secret:
+		ts = str(int(time.time()))
+		sign = _gen_webhook_sign(secret, ts)
+		card_payload.update({ "timestamp": ts, "sign": sign })
+	
+	r = requests.post(webhook_url, json=card_payload, timeout=TIMEOUT)
+	print(f"  📡 Card webhook response status: {r.status_code}")
+	try:
+		data = r.json()
+		print(f"  📋 Card webhook response: {data}")
+		# Check for Feishu-specific error codes
+		if isinstance(data, dict):
+			code = data.get("code")
+			if code == 0:
+				print(f"  ✅ Webhook success with card: {data}")
 			else:
 				print(f"  ❌ Webhook error (code {code}): {data.get('msg', 'Unknown error')}")
 				raise Exception(f"Feishu webhook error: {data}")
 		else:
-			print(f"  ✅ Webhook success: {data}")
+			print(f"  ✅ Webhook success with card: {data}")
 	except Exception as e:
 		# If not JSON, surface status for debugging
 		print(f"  ❌ Webhook error: {r.status_code} - {r.text[:200]}...")
@@ -921,6 +960,13 @@ def main():
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
                 
+                # Add keywords that Feishu webhook might require
+                # Common keywords that work with Feishu webhooks
+                keywords = ["新闻", "news", "消息", "资讯", "报道", "更新"]
+                if not any(keyword in title.lower() or keyword in summary.lower() for keyword in keywords):
+                    # Add a keyword to ensure webhook accepts the message
+                    title = f"【{category}】{it['title']} - 新闻资讯"
+                
                 # Add publication time to content
                 pub_time = it.get("published_at", "")
                 if pub_time:
@@ -954,6 +1000,8 @@ def main():
                 else:
                     if webhook_url:
                         print(f"📤 Sending via webhook: {webhook_url[:50]}...")
+                        print(f"  📝 Title: {title}")
+                        print(f"  📄 Content preview: {content[:200]}...")
                         # Only pass secret if it's actually set
                         if webhook_secret:
                             send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
