@@ -207,14 +207,21 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 	try:
 		data = r.json()
 		print(f"  📋 Webhook response: {data}")
-		if isinstance(data, dict) and data.get("StatusCode") not in (0, None) and data.get("code") not in (0, None):
-			print(f"  ⚠️  Webhook warning: {data}")
+		# Check for Feishu-specific error codes
+		if isinstance(data, dict):
+			code = data.get("code")
+			if code == 0:
+				print(f"  ✅ Webhook success: {data}")
+			else:
+				print(f"  ❌ Webhook error (code {code}): {data.get('msg', 'Unknown error')}")
+				raise Exception(f"Feishu webhook error: {data}")
 		else:
 			print(f"  ✅ Webhook success: {data}")
 	except Exception as e:
 		# If not JSON, surface status for debugging
 		print(f"  ❌ Webhook error: {r.status_code} - {r.text[:200]}...")
 		print(f"  📄 Raw response: {r.text}")
+		raise e
 
 def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
@@ -947,7 +954,11 @@ def main():
                 else:
                     if webhook_url:
                         print(f"📤 Sending via webhook: {webhook_url[:50]}...")
-                        send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
+                        # Only pass secret if it's actually set
+                        if webhook_secret:
+                            send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
+                        else:
+                            send_card_via_webhook(webhook_url, title, content)
                         print(f"✅ Webhook sent successfully")
                     else:
                         print(f"📤 Sending via API (token method)")
