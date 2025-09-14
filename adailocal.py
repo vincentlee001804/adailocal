@@ -145,7 +145,7 @@ def is_tech_news(title, body):
     
     return is_tech
 
-def is_recent_news(published_at_str, hours=2):
+def is_recent_news(published_at_str, hours=24):
     """Check if news is recent enough to be considered for deduplication"""
     if not published_at_str:
         print(f"  No date found, considering recent")
@@ -462,9 +462,9 @@ def main():
                 return published_at
             items.sort(key=_k, reverse=True)
             
-            # Log the top 3 most recent items for verification
-            print(f"=== Top 3 most recent news items ===")
-            for i, item in enumerate(items[:3]):
+            # Log the top 10 most recent items for verification
+            print(f"=== Top 10 most recent news items ===")
+            for i, item in enumerate(items[:10]):
                 print(f"{i+1}. {item['title'][:60]}... (Published: {item.get('published_at', 'No date')})")
             
             # Process items and skip already sent news
@@ -485,7 +485,13 @@ def main():
                         from datetime import datetime
                         pub_dt = dateparser.parse(pub_time)
                         if pub_dt:
-                            time_str = pub_dt.strftime("%Y-%m-%d %H:%M")
+                            # Convert to Malaysia timezone (UTC+8)
+                            from datetime import timezone, timedelta
+                            malaysia_tz = timezone(timedelta(hours=8))
+                            if pub_dt.tzinfo is None:
+                                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+                            malaysia_time = pub_dt.astimezone(malaysia_tz)
+                            time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
                             content = f"{summary}\n\n⏰ {time_str}\n来源：{it['source']}  {it['url']}"
                         else:
                             content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
