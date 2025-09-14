@@ -183,7 +183,7 @@ def _build_card(title, content):
 		"elements": [
 			{ "tag": "div", "text": { "tag": "lark_md", "content": content } },
 			{ "tag": "hr" },
-			{ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注：📚阿呆也可能会犯错，还请甄别。" } }
+			{ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要、正文均不代表个人观点" } }
 		]
 	}
 
@@ -199,7 +199,7 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 	simple_payload = { 
 		"msg_type": "text", 
 		"content": {
-			"text": f"{title}\n\n{content}"
+			"text": f"{title}\n\n{content}\n\n注:摘要、正文均不代表个人观点"
 		}
 	}
 	
@@ -982,16 +982,16 @@ def main():
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
                             # Format source name nicely
                             source_name = _format_source_name(it['source'])
-                            content = f"{summary}\n\n⏰ {time_str}\n\n——————\n[{source_name}]({it['url']})"
+                            content = f"{summary}\n\n⏰ {time_str}\n\n来源: {source_name}\n{it['url']}"
                         else:
                             source_name = _format_source_name(it['source'])
-                            content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
+                            content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
                     except:
                         source_name = _format_source_name(it['source'])
-                        content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
+                        content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
                 else:
                     source_name = _format_source_name(it['source'])
-                    content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
+                    content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
                 
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
