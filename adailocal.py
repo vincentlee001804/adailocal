@@ -289,11 +289,151 @@ def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" "
 
 def classify(title, text):
     t = (title + " " + text).lower()
-    if any(x in t for x in ["ringgit", "bnm", "gdp", "market", "investment", "budget"]): return "经济"
-    if any(x in t for x in ["flood", "banjir", "earthquake", "gempa", "landslide", "haze"]): return "灾害"
-    if any(x in t for x in ["match", "goal", "badminton", "football", "harimau malaya"]): return "体育"
-    if any(x in t for x in ["ai", "tech", "startup", "software", "chip", "semiconductor"]): return "科技"
-    if any(x in t for x in ["film", "movie", "concert", "celebrity", "艺人", "pelakon"]): return "文娱"
+    
+    # 经济 (Economy) - Expanded keywords
+    economy_keywords = [
+        "ringgit", "bnm", "gdp", "market", "investment", "budget", "economy", "economic",
+        "bank", "banking", "finance", "financial", "stock", "trading", "currency", "forex",
+        "inflation", "deflation", "interest rate", "loan", "credit", "debt", "revenue",
+        "profit", "loss", "earnings", "quarterly", "annual", "fiscal", "monetary policy",
+        "central bank", "reserve bank", "treasury", "ministry of finance", "kementerian kewangan",
+        "bursa malaysia", "klse", "ftse", "index", "share", "equity", "bond", "sukuk",
+        "ipo", "listing", "merger", "acquisition", "takeover", "dividend", "yield",
+        "retail", "wholesale", "trade", "export", "import", "balance of trade", "current account",
+        "foreign direct investment", "fdi", "portfolio investment", "capital flow",
+        "exchange rate", "usd", "rm", "myr", "yen", "euro", "pound", "singapore dollar",
+        "oil price", "crude oil", "petroleum", "petronas", "palm oil", "commodity",
+        "manufacturing", "industrial", "production", "capacity", "output", "supply chain",
+        "business", "corporate", "enterprise", "sme", "msme", "entrepreneur", "startup",
+        "venture capital", "private equity", "funding", "capital", "investment fund",
+        "pension fund", "epf", "kwsp", "tabung haji", "asb", "unit trust", "mutual fund",
+        "insurance", "takaful", "premium", "claim", "coverage", "policy", "actuarial",
+        "audit", "accounting", "tax", "gst", "sst", "income tax", "corporate tax",
+        "property", "real estate", "housing", "mortgage", "loan", "developer", "construction",
+        "infrastructure", "development", "project", "tender", "contract", "procurement"
+    ]
+    
+    # 灾害 (Disaster) - Expanded keywords
+    disaster_keywords = [
+        "flood", "banjir", "earthquake", "gempa", "landslide", "haze", "disaster", "emergency",
+        "storm", "typhoon", "hurricane", "cyclone", "tornado", "thunderstorm", "heavy rain",
+        "drought", "kekeringan", "fire", "kebakaran", "wildfire", "forest fire", "bush fire",
+        "tsunami", "volcano", "gunung berapi", "eruption", "lava", "ash", "smoke",
+        "accident", "kemalangan", "crash", "collision", "explosion", "letupan", "blast",
+        "chemical spill", "oil spill", "contamination", "pollution", "toxic", "hazardous",
+        "evacuation", "pemindahan", "rescue", "penyelamatan", "relief", "bantuan",
+        "emergency response", "crisis", "krisis", "calamity", "catastrophe", "tragedy",
+        "casualty", "fatality", "death", "kematian", "injury", "cedera", "hospital",
+        "red cross", "civil defence", "bomba", "fire department", "police", "military",
+        "warning", "amaran", "alert", "sirene", "siren", "emergency broadcast",
+        "weather warning", "flood warning", "storm warning", "severe weather",
+        "climate change", "global warming", "extreme weather", "natural disaster"
+    ]
+    
+    # 体育 (Sports) - Expanded keywords
+    sports_keywords = [
+        "match", "goal", "badminton", "football", "harimau malaya", "sports", "sukan",
+        "game", "permainan", "tournament", "kejohanan", "championship", "pertandingan",
+        "league", "liga", "cup", "piala", "final", "separuh akhir", "semi final",
+        "olympics", "olimpik", "paralympics", "world cup", "piala dunia", "asian games",
+        "seagames", "southeast asian games", "commonwealth games", "sukan komanwel",
+        "soccer", "tennis", "golf", "basketball", "volleyball", "hockey", "cricket",
+        "swimming", "renang", "athletics", "olahraga", "track and field", "marathon",
+        "cycling", "berbasikal", "motorcycle", "motorsport", "f1", "formula 1", "moto gp",
+        "boxing", "tinju", "martial arts", "seni mempertahankan diri", "karate", "taekwondo",
+        "judo", "wrestling", "gymnastics", "gimnastik", "weightlifting", "angkat berat",
+        "archery", "memanah", "shooting", "menembak", "sailing", "perlayaran", "rowing",
+        "rugby", "baseball", "softball", "squash", "table tennis", "ping pong",
+        "player", "pemain", "athlete", "atlet", "coach", "jurulatih", "team", "pasukan",
+        "score", "markah", "point", "mata", "win", "menang", "lose", "kalah", "draw", "seri",
+        "victory", "kemenangan", "defeat", "kekalahan", "record", "rekod", "achievement",
+        "medal", "pingat", "gold", "emas", "silver", "perak", "bronze", "gangsa",
+        "stadium", "arena", "field", "padang", "court", "gelanggang", "track", "litar"
+    ]
+    
+    # 科技 (Technology) - Expanded keywords
+    tech_keywords = [
+        "ai", "artificial intelligence", "tech", "technology", "startup", "software", "chip", "semiconductor",
+        "digital", "innovation", "smartphone", "mobile", "gadget", "device", "hardware", "app", "application",
+        "computer", "laptop", "desktop", "tablet", "ipad", "iphone", "android", "ios", "windows", "mac",
+        "apple", "samsung", "google", "microsoft", "meta", "facebook", "tesla", "amazon", "netflix", "spotify",
+        "xiaomi", "poco", "huawei", "oneplus", "sony", "lg", "intel", "amd", "nvidia", "qualcomm",
+        "ev", "electric vehicle", "automotive tech", "autonomous", "self-driving", "battery", "charging",
+        "camera", "photography", "drone", "vr", "ar", "virtual reality", "augmented reality",
+        "gaming", "console", "playstation", "xbox", "nintendo", "steam", "streaming", "youtube", "twitch",
+        "fintech", "cryptocurrency", "blockchain", "bitcoin", "ethereum", "nft", "web3",
+        "malaysia tech", "malaysian startup", "e-commerce", "online shopping", "digital payment",
+        "cloud computing", "aws", "azure", "gcp", "server", "database", "api", "developer",
+        "programming", "coding", "python", "javascript", "java", "c++", "react", "node.js",
+        "cybersecurity", "hacking", "privacy", "data protection", "gdpr", "encryption",
+        "iot", "internet of things", "smart home", "wearable", "fitness tracker", "smartwatch",
+        "5g", "6g", "wireless", "bluetooth", "wifi", "network", "internet", "broadband",
+        "robotics", "automation", "ai chatbot", "machine learning", "deep learning", "neural network",
+        "quantum computing", "quantum", "supercomputer", "data center", "server farm",
+        "open source", "github", "git", "version control", "software development", "agile", "devops",
+        "ui", "ux", "user interface", "user experience", "design", "frontend", "backend", "full stack",
+        "mobile app", "app store", "google play", "mobile development",
+        "web development", "website", "html", "css", "bootstrap", "responsive design",
+        "data science", "analytics", "big data", "artificial intelligence", "machine learning",
+        "tech news", "technology news", "tech industry", "silicon valley", "tech giant",
+        "innovation", "disruptive technology", "emerging technology", "cutting edge", "breakthrough",
+        "tech conference", "ces", "wwdc", "google io", "microsoft build", "aws re:invent",
+        "tech review", "product review", "tech comparison", "benchmark", "performance test",
+        "tech tutorial", "how to", "tech guide", "tech tips", "tech tricks", "tech hacks",
+        "tech update", "software update", "firmware update", "security patch", "bug fix",
+        "tech release", "product launch", "new product", "announcement", "unveiling",
+        "tech acquisition", "merger", "partnership", "collaboration", "joint venture",
+        "tech investment", "funding round", "series a", "series b", "ipo", "valuation",
+        "tech startup", "unicorn", "scale-up", "growth", "expansion", "international",
+        "tech talent", "recruitment", "hiring", "job opening", "career", "tech job",
+        "tech education", "coding bootcamp", "online course", "certification", "training",
+        "tech community", "meetup", "conference", "hackathon", "tech event", "networking",
+        "tech blog", "tech article", "tech opinion", "tech analysis", "tech insight",
+        "tech trend", "market trend", "industry trend", "future of tech", "tech prediction",
+        "tech regulation", "tech policy", "tech law", "tech ethics", "tech responsibility",
+        "tech sustainability", "green tech", "clean tech", "renewable energy", "carbon neutral",
+        "tech accessibility", "inclusive design", "tech for good", "social impact", "tech charity",
+        "tech diversity", "inclusion", "equality", "tech for all", "democratizing tech"
+    ]
+    
+    # 文娱 (Entertainment) - Expanded keywords
+    entertainment_keywords = [
+        "film", "movie", "concert", "celebrity", "艺人", "pelakon", "entertainment", "hiburan",
+        "cinema", "wayang", "theater", "teater", "drama", "drama", "musical", "muzikal",
+        "music", "muzik", "song", "lagu", "singer", "penyanyi", "band", "kumpulan", "artist",
+        "actor", "pelakon", "actress", "pelakon wanita", "director", "pengarah", "producer",
+        "penerbit", "script", "skrip", "screenplay", "story", "cerita", "plot", "plot",
+        "character", "watak", "role", "peranan", "performance", "persembahan", "show",
+        "acara", "program", "program", "series", "siri", "episode", "episod", "season",
+        "musim", "season", "finale", "penamat", "premiere", "tayangan perdana", "release",
+        "keluaran", "box office", "hasil kutipan", "revenue", "pendapatan", "ticket",
+        "tiket", "audience", "penonton", "viewer", "pemirsa", "fan", "peminat", "fandom",
+        "award", "anugerah", "oscar", "grammy", "emmy", "golden globe", "cannes",
+        "festival", "festival", "competition", "pertandingan", "contest", "pertandingan",
+        "reality show", "rancangan realiti", "talent show", "pertandingan bakat", "dance",
+        "tarian", "singing", "nyanyian", "comedy", "komedi", "stand-up", "joke", "lawak",
+        "drama", "drama", "romance", "cinta", "action", "aksi", "horror", "seram",
+        "thriller", "suspense", "mystery", "misteri", "sci-fi", "science fiction",
+        "fantasy", "fantasi", "animation", "animasi", "cartoon", "kartun", "anime",
+        "manga", "comic", "komik", "book", "buku", "novel", "novel", "author", "penulis",
+        "publisher", "penerbit", "magazine", "majalah", "newspaper", "surat khabar",
+        "radio", "radio", "podcast", "podcast", "streaming", "penstriman", "netflix",
+        "disney", "hbo", "amazon prime", "youtube", "tiktok", "instagram", "social media",
+        "media sosial", "influencer", "influencer", "youtuber", "blogger", "vlogger",
+        "fashion", "fesyen", "beauty", "kecantikan", "lifestyle", "gaya hidup", "travel",
+        "pelancongan", "food", "makanan", "restaurant", "restoran", "cooking", "memasak",
+        "recipe", "resipi", "culture", "budaya", "tradition", "tradisi", "festival",
+        "perayaan", "celebration", "sambutan", "party", "parti", "event", "acara",
+        "exhibition", "pameran", "museum", "muzium", "gallery", "galeri", "art",
+        "seni", "painting", "lukisan", "sculpture", "arca", "photography", "fotografi"
+    ]
+    
+    # Check categories in order of specificity
+    if any(x in t for x in economy_keywords): return "经济"
+    if any(x in t for x in disaster_keywords): return "灾害"
+    if any(x in t for x in sports_keywords): return "体育"
+    if any(x in t for x in tech_keywords): return "科技"
+    if any(x in t for x in entertainment_keywords): return "文娱"
     return "综合"
 
 def summarize(title, body):
