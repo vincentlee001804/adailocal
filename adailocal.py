@@ -324,18 +324,26 @@ def deepseek_summarize_from_url(title, article_url):
         print(f"  🤖 DeepSeek reading and summarizing: {title[:50]}...")
         
         # Prepare the prompt for DeepSeek to read the article directly
-        prompt = f"""Please read the following news article URL and provide a comprehensive summary in Chinese. The summary should be:
+        prompt = f"""Please read the following news article URL and provide:
 
-1. **Concise but informative** (200-300 words)
-2. **Include key facts and details**
-3. **Highlight important numbers, dates, and names**
-4. **Maintain the original meaning and context**
-5. **Use clear, professional language**
+1. **A Mandarin Chinese title** (简洁明了的中文标题)
+2. **A comprehensive summary in Chinese** (200-300 words)
+
+Requirements:
+- Title should be concise and capture the main point
+- Summary should be informative with key facts and details
+- Include important numbers, dates, and names
+- Maintain original meaning and context
+- Use clear, professional language
 
 Article Title: {title}
 Article URL: {article_url}
 
-Please read the full article from the URL and provide only the summary without any additional commentary or formatting."""
+Please provide the response in this exact format:
+标题: [Mandarin Chinese title]
+摘要: [Chinese summary]
+
+Please read the full article from the URL and provide only the title and summary without any additional commentary."""
 
         headers = {
             'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
@@ -382,19 +390,56 @@ Please read the full article from the URL and provide only the summary without a
             print(f"  📋 Choice structure: {result['choices'][0]}")
             raise Exception("Invalid response structure")
         
-        summary = result['choices'][0]['message']['content'].strip()
+        content = result['choices'][0]['message']['content'].strip()
         
-        if not summary:
-            print(f"  ❌ Empty summary received")
-            raise Exception("Empty summary received")
+        if not content:
+            print(f"  ❌ Empty content received")
+            raise Exception("Empty content received")
         
-        print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
-        return summary
+        # Parse the response to extract title and summary
+        try:
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:'):
+                    # If no title found yet, this might be the title
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:'):
+                    # If we have a title, this is part of the summary
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
+            
+            # If we couldn't parse properly, use the whole content as summary
+            if not chinese_title or not summary:
+                print(f"  ⚠️  Could not parse title/summary, using full content")
+                chinese_title = title  # Fallback to original title
+                summary = content
+            
+            print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
+            print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+            
+            # Return both title and summary as a tuple
+            return chinese_title, summary
+            
+        except Exception as e:
+            print(f"  ⚠️  Error parsing response: {e}")
+            print(f"  📄 Raw content: {content[:200]}...")
+            # Fallback: use original title and full content as summary
+            return title, content
         
     except Exception as e:
         print(f"  ❌ DeepSeek API error: {e}")
         # Fallback to simple truncation
-        return article_content[:500] + "..." if len(article_content) > 500 else article_content
+        return title, (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
 def deepseek_summarize_content(title, article_content):
     """Use DeepSeek AI to summarize pre-extracted article content"""
@@ -814,8 +859,11 @@ def main():
                     # Try direct URL approach first (let DeepSeek read the article)
                     try:
                         print(f"  🌐 Letting DeepSeek read article directly from URL")
-                        summary = deepseek_summarize_from_url(it["title"], it['url'])
+                        chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
+                        print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
                         print(f"  🤖 DeepSeek direct URL summary length: {len(summary)} characters")
+                        # Use the Chinese title from DeepSeek
+                        it["title"] = chinese_title
                     except Exception as e:
                         print(f"  ⚠️  Direct URL approach failed: {e}")
                         print(f"  🔄 Falling back to content extraction + DeepSeek")
