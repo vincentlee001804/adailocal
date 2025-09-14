@@ -183,7 +183,7 @@ def _build_card(title, content):
 		"elements": [
 			{ "tag": "div", "text": { "tag": "lark_md", "content": content } },
 			{ "tag": "hr" },
-			{ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注：摘要、正文均不代表个人观点" } }
+			{ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注：📚阿呆也可能会犯错，还请甄别。" } }
 		]
 	}
 
@@ -214,6 +214,22 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
+
+def _format_source_name(source):
+    """Format source name to be more user-friendly"""
+    if not source:
+        return "未知来源"
+    
+    # Clean up common RSS feed names
+    source = source.replace(" - All", "").replace(" - Latest News", "").replace(" RSS", "")
+    source = source.replace("Online", "").replace("Latest", "").replace("News", "")
+    source = source.replace("  ", " ").strip()
+    
+    # Add "新闻" suffix if not present
+    if not any(word in source for word in ["新闻", "News", "网", "报", "时报"]):
+        source += "新闻"
+    
+    return source
 
 def read_article_content(url):
     """Read and extract the main content from an article URL"""
@@ -900,13 +916,18 @@ def main():
                                 pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                             malaysia_time = pub_dt.astimezone(malaysia_tz)
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
-                            content = f"{summary}\n\n⏰ {time_str}\n来源：{it['source']}  {it['url']}"
+                            # Format source name nicely
+                            source_name = _format_source_name(it['source'])
+                            content = f"{summary}\n\n⏰ {time_str}\n\n——————\n[{source_name}]({it['url']})"
                         else:
-                            content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                            source_name = _format_source_name(it['source'])
+                            content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
                     except:
-                        content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                        source_name = _format_source_name(it['source'])
+                        content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
                 else:
-                    content = f"{summary}\n\n来源：{it['source']}  {it['url']}"
+                    source_name = _format_source_name(it['source'])
+                    content = f"{summary}\n\n——————\n[{source_name}]({it['url']})"
                 
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
