@@ -23,6 +23,10 @@ except ImportError:
     except FileNotFoundError:
         pass  # .env file doesn't exist, use system environment variables
 
+# DeepSeek API Configuration
+DEEPSEEK_API_KEY = "sk-07fefd77e80043979374fc5e10be9f3d"
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
@@ -286,6 +290,104 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
+
+def read_article_content(url):
+    """Read and extract the main content from an article URL"""
+    try:
+        print(f"  📖 Reading article: {url}")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style", "nav", "header", "footer", "aside"]):
+            script.decompose()
+        
+        # Try to find main content areas
+        content_selectors = [
+            'article', '.article-content', '.post-content', '.entry-content',
+            '.content', '.main-content', '.story-content', '.article-body',
+            'main', '.main', '#content', '#main', '.post', '.entry'
+        ]
+        
+        content = ""
+        for selector in content_selectors:
+            elements = soup.select(selector)
+            if elements:
+                content = " ".join([elem.get_text() for elem in elements])
+                break
+        
+        # If no specific content area found, get all text
+        if not content:
+            content = soup.get_text()
+        
+        # Clean up the content
+        content = " ".join(content.split())  # Remove extra whitespace
+        content = content[:8000]  # Limit to 8000 characters for API
+        
+        print(f"  ✅ Article content extracted: {len(content)} characters")
+        return content
+        
+    except Exception as e:
+        print(f"  ❌ Error reading article: {e}")
+        return ""
+
+def deepseek_summarize(title, article_content):
+    """Use DeepSeek AI to summarize the article content"""
+    try:
+        print(f"  🤖 DeepSeek summarizing: {title[:50]}...")
+        
+        # Prepare the prompt for DeepSeek
+        prompt = f"""Please provide a comprehensive summary of this news article in Chinese. The summary should be:
+
+1. **Concise but informative** (200-300 words)
+2. **Include key facts and details**
+3. **Highlight important numbers, dates, and names**
+4. **Maintain the original meaning and context**
+5. **Use clear, professional language**
+
+Article Title: {title}
+
+Article Content:
+{article_content}
+
+Please provide only the summary without any additional commentary or formatting."""
+
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.3
+        }
+        
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        
+        result = response.json()
+        summary = result['choices'][0]['message']['content'].strip()
+        
+        print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+        return summary
+        
+    except Exception as e:
+        print(f"  ❌ DeepSeek API error: {e}")
+        # Fallback to simple truncation
+        return article_content[:500] + "..." if len(article_content) > 500 else article_content
 
 def classify(title, text):
     t = (title + " " + text).lower()
@@ -614,7 +716,19 @@ def main():
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
                     continue
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
-                summary = ai_summarize(it["title"], it["body"]) if use_ai else summarize(it["title"], it["body"])
+                
+                # Use DeepSeek for AI summarization if enabled
+                if use_ai:
+                    print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
+                    # Read full article content
+                    article_content = read_article_content(it['url'])
+                    if article_content:
+                        summary = deepseek_summarize(it["title"], article_content)
+                    else:
+                        # Fallback to original body if article reading fails
+                        summary = ai_summarize(it["title"], it["body"])
+                else:
+                    summary = summarize(it["title"], it["body"])
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
                 
