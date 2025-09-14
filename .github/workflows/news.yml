@@ -1,8 +1,8 @@
-name: Push News Every 10 Minutes
+name: Push News Every Hour
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
