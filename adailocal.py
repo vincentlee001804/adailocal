@@ -65,89 +65,13 @@ RSS_FEEDS = [
     #"https://www.orientaldaily.com.my/feed/",
 ]
 
-# Tech keywords to filter - only tech-related news will be pushed
-TECH_KEYWORDS = [
-    # Core tech terms
-    "AI", "artificial intelligence", "machine learning", "ML", "technology", "digital innovation",
-    "smartphone", "mobile phone", "gadget", "device", "hardware", "software", "app", "application",
-    "computer", "laptop", "desktop", "tablet", "iPad", "iPhone", "Android", "iOS", "Windows", "Mac",
-    
-    # Tech companies and brands
-    "Apple", "Samsung", "Google", "Microsoft", "Meta", "Facebook", "Tesla", "Amazon", "Netflix", "Spotify",
-    "Xiaomi", "POCO", "Huawei", "OnePlus", "Sony", "LG", "Intel", "AMD", "NVIDIA", "Qualcomm",
-    
-    # Tech categories
-    "EV", "electric vehicle", "automotive tech", "autonomous", "self-driving", "battery", "charging",
-    "camera", "photography", "drone", "robot", "robotics", "IoT", "internet of things", "smart home",
-    "blockchain", "cryptocurrency", "crypto", "bitcoin", "NFT", "Web3", "metaverse", "VR", "AR",
-    "gaming", "console", "PlayStation", "Xbox", "Nintendo", "Steam", "esports", "streaming",
-    "cloud", "data center", "server", "database", "cybersecurity", "hacking", "privacy", "encryption",
-    
-    # Malaysian tech terms
-    "Malaysia tech", "Malaysian startup", "tech startup", "fintech", "e-commerce", "online shopping",
-    "digital banking", "mobile payment", "e-wallet", "Touch 'n Go", "Grab", "Shopee", "Lazada",
-    
-    # Tech-specific terms
-    "processor", "CPU", "GPU", "RAM", "storage", "SSD", "USB", "Bluetooth", "WiFi", "5G", "4G",
-    "programming", "coding", "developer", "startup", "venture capital", "tech investment",
-    "artificial", "algorithm", "data science", "analytics", "automation", "digitization"
-]
+# All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
 TIMEOUT = (5, 15)
 
 # Time-based dedup (only consider items from last 24 hours)
 from datetime import datetime, timedelta
 
-def is_tech_news(title, body):
-    """Check if news is tech-related based on keywords"""
-    import re
-    text = f"{title} {body}".lower()
-    
-    # More specific tech keywords that are less likely to have false positives
-    specific_tech_keywords = [
-        # Tech companies and brands (exact matches)
-        "apple", "samsung", "google", "microsoft", "meta", "facebook", "tesla", "amazon", "netflix", "spotify",
-        "xiaomi", "poco", "huawei", "oneplus", "sony", "lg", "intel", "amd", "nvidia", "qualcomm",
-        
-        # Tech products and devices
-        "iphone", "android", "ios", "windows", "ipad", "smartphone", "laptop", "desktop", "tablet",
-        "playstation", "xbox", "nintendo", "steam", "gaming", "console",
-        
-        # Tech terms with word boundaries
-        "\\bai\\b", "\\bml\\b", "\\bev\\b", "\\biot\\b", "\\bvr\\b", "\\bar\\b", "\\b5g\\b", "\\b4g\\b",
-        "\\bcpu\\b", "\\bgpu\\b", "\\bram\\b", "\\bssd\\b", "\\busb\\b", "\\bbluetooth\\b", "\\bwifi\\b",
-        
-        # Tech categories
-        "electric vehicle", "autonomous", "self-driving", "battery", "charging", "camera", "photography",
-        "drone", "robot", "robotics", "smart home", "blockchain", "cryptocurrency", "crypto", "bitcoin",
-        "nft", "web3", "metaverse", "streaming", "cloud", "data center", "server", "database",
-        "cybersecurity", "hacking", "privacy", "encryption", "programming", "coding", "developer",
-        "startup", "venture capital", "tech investment", "algorithm", "data science", "analytics",
-        "automation", "digitization",
-        
-        # Malaysian tech terms
-        "fintech", "e-commerce", "online shopping", "digital banking", "mobile payment", "e-wallet",
-        "touch 'n go", "grab", "shopee", "lazada"
-    ]
-    
-    # Check for specific tech matches
-    tech_matches = []
-    for keyword in specific_tech_keywords:
-        if keyword.startswith("\\b") and keyword.endswith("\\b"):
-            # Word boundary search
-            if re.search(keyword, text):
-                tech_matches.append(keyword.replace("\\b", ""))
-        else:
-            # Regular substring search
-            if keyword in text:
-                tech_matches.append(keyword)
-    
-    is_tech = len(tech_matches) > 0
-    if is_tech:
-        print(f"    🔍 Tech match: {tech_matches[:3]}")
-    else:
-        print(f"    ❌ Not tech: no matches")
-    
-    return is_tech
+# Tech filtering removed - now supports all news categories
 
 def is_recent_news(published_at_str, hours=24):
     """Check if news is recent enough to be considered for deduplication"""
@@ -376,9 +300,19 @@ Please provide only the summary without any additional commentary or formatting.
         }
         
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
+        print(f"  📡 DeepSeek API response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"  ❌ DeepSeek API error: {response.status_code} - {response.text}")
+            raise Exception(f"API returned {response.status_code}")
         
         result = response.json()
+        print(f"  📋 DeepSeek API response: {result}")
+        
+        if 'choices' not in result or not result['choices']:
+            print(f"  ❌ No choices in DeepSeek response")
+            raise Exception("No choices in API response")
+        
         summary = result['choices'][0]['message']['content'].strip()
         
         print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
@@ -628,16 +562,11 @@ def collect_once():
                     print(f"  Skipping old news: {title[:50]}...")
                     continue
                 
-                # Get description for tech filtering
+                # Get description for processing
                 desc = e.get("summary") or e.get("description") or ""
                 body = _clean(desc)
                 
-                # Only process tech-related news
-                if not is_tech_news(title, body):
-                    print(f"  Skipping non-tech news: {title[:50]}...")
-                    continue
-                
-                print(f"  ✅ Tech news found: {title[:50]}...")
+                print(f"  ✅ News found: {title[:50]}...")
                 
                 k = _key(link, title)
                 if k in SEEN: 
@@ -685,6 +614,13 @@ def main():
     SEND_INTERVAL_SEC = float(os.environ.get("SEND_INTERVAL_SEC", "1.0"))
 
     ONE_SHOT = os.environ.get("ONE_SHOT", "0") == "1"
+    
+    # Debug environment variables
+    use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
+    print(f"🔧 Environment check:")
+    print(f"  USE_AI_SUMMARY: {os.environ.get('USE_AI_SUMMARY', '0')} -> {use_ai}")
+    print(f"  DEEPSEEK_API_KEY: {'Set' if DEEPSEEK_API_KEY else 'Not set'}")
+    print(f"  DEEPSEEK_API_URL: {DEEPSEEK_API_URL}")
 
     # Load previously sent news for persistent deduplication
     sent_news_urls = load_sent_news()
@@ -720,14 +656,19 @@ def main():
                 # Use DeepSeek for AI summarization if enabled
                 if use_ai:
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
+                    print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     # Read full article content
                     article_content = read_article_content(it['url'])
                     if article_content:
+                        print(f"  📖 Article content length: {len(article_content)} characters")
                         summary = deepseek_summarize(it["title"], article_content)
+                        print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
                     else:
+                        print(f"  ⚠️  Article reading failed, using fallback")
                         # Fallback to original body if article reading fails
                         summary = ai_summarize(it["title"], it["body"])
                 else:
+                    print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
