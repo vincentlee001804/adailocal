@@ -203,13 +203,18 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 		sign = _gen_webhook_sign(secret, ts)
 		payload.update({ "timestamp": ts, "sign": sign })
 	r = requests.post(webhook_url, json=payload, timeout=TIMEOUT)
+	print(f"  📡 Webhook response status: {r.status_code}")
 	try:
 		data = r.json()
+		print(f"  📋 Webhook response: {data}")
 		if isinstance(data, dict) and data.get("StatusCode") not in (0, None) and data.get("code") not in (0, None):
-			print(f"webhook_send_warn: {data}")
-	except Exception:
+			print(f"  ⚠️  Webhook warning: {data}")
+		else:
+			print(f"  ✅ Webhook success: {data}")
+	except Exception as e:
 		# If not JSON, surface status for debugging
-		print(f"webhook_send_status: {r.status_code}")
+		print(f"  ❌ Webhook error: {r.status_code} - {r.text[:200]}...")
+		print(f"  📄 Raw response: {r.text}")
 
 def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
@@ -817,7 +822,7 @@ def main():
     # Debug environment variables
     print(f"🔧 Environment check:")
     print(f"  FEISHU_WEBHOOK_URL: {'Set' if webhook_url else 'Not set'}")
-    print(f"  FEISHU_WEBHOOK_SECRET: {'Set' if webhook_secret else 'Not set'}")
+    print(f"  FEISHU_WEBHOOK_SECRET: {'Set' if webhook_secret else 'Not set (optional)'}")
     if webhook_url:
         print(f"  Webhook URL: {webhook_url[:50]}...")
     
