@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+      FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_API_URL: 'https://api.deepseek.com/v1/chat/completions'
       ONE_SHOT: '1'
       MAX_PUSH_PER_CYCLE: '1'
       SEND_INTERVAL_SEC: '1.0'
@@ -41,6 +44,10 @@ jobs:
           if [ -z "$FEISHU_WEBHOOK_URL" ]; then
             echo "::error::FEISHU_WEBHOOK_URL secret not set"; exit 1;
           fi
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "::error::DEEPSEEK_API_KEY secret not set"; exit 1;
+          fi
+          echo "✅ All required secrets are set"
       
       - name: Run ONE_SHOT cycle
         run: |

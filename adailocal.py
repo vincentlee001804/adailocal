@@ -814,6 +814,13 @@ def main():
     webhook_url = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
     webhook_secret = os.environ.get("FEISHU_WEBHOOK_SECRET", "").strip()
     
+    # Debug environment variables
+    print(f"🔧 Environment check:")
+    print(f"  FEISHU_WEBHOOK_URL: {'Set' if webhook_url else 'Not set'}")
+    print(f"  FEISHU_WEBHOOK_SECRET: {'Set' if webhook_secret else 'Not set'}")
+    if webhook_url:
+        print(f"  Webhook URL: {webhook_url[:50]}...")
+    
     # Test mode - don't actually send if webhook URL is placeholder
     TEST_MODE = webhook_url == "your_webhook_url_here" or not webhook_url
     if TEST_MODE:
@@ -934,10 +941,14 @@ def main():
                     print(f"CONTENT: {content[:100]}...")
                 else:
                     if webhook_url:
+                        print(f"📤 Sending via webhook: {webhook_url[:50]}...")
                         send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
+                        print(f"✅ Webhook sent successfully")
                     else:
+                        print(f"📤 Sending via API (token method)")
                         token = get_tenant_access_token(app_id, app_secret)
                         send_card_message(token, chat_id, title, content)
+                        print(f"✅ API sent successfully")
                 
                 # Mark this URL as sent (both in-memory and persistent)
                 SENT_URLS.add(it['url'])
