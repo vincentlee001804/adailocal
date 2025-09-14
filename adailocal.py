@@ -228,6 +228,8 @@ def read_article_content(url):
             'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
         }
         
         response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
@@ -351,24 +353,42 @@ Please provide only the summary without any additional commentary or formatting.
                 }
             ],
             "max_tokens": 500,
-            "temperature": 0.3
+            "temperature": 0.3,
+            "stream": False
         }
         
+        print(f"  📤 Sending request to DeepSeek API...")
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
         print(f"  📡 DeepSeek API response status: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"  ❌ DeepSeek API error: {response.status_code} - {response.text}")
+            print(f"  ❌ DeepSeek API error: {response.status_code}")
+            print(f"  📄 Response text: {response.text[:500]}...")
             raise Exception(f"API returned {response.status_code}")
         
-        result = response.json()
-        print(f"  📋 DeepSeek API response: {result}")
+        try:
+            result = response.json()
+            print(f"  📋 DeepSeek API response keys: {list(result.keys())}")
+        except Exception as e:
+            print(f"  ❌ Failed to parse JSON response: {e}")
+            print(f"  📄 Raw response: {response.text[:500]}...")
+            raise Exception("Invalid JSON response")
         
         if 'choices' not in result or not result['choices']:
             print(f"  ❌ No choices in DeepSeek response")
+            print(f"  📋 Full response: {result}")
             raise Exception("No choices in API response")
         
+        if 'message' not in result['choices'][0] or 'content' not in result['choices'][0]['message']:
+            print(f"  ❌ Invalid response structure")
+            print(f"  📋 Choice structure: {result['choices'][0]}")
+            raise Exception("Invalid response structure")
+        
         summary = result['choices'][0]['message']['content'].strip()
+        
+        if not summary:
+            print(f"  ❌ Empty summary received")
+            raise Exception("Empty summary received")
         
         print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
         return summary
@@ -712,16 +732,19 @@ def main():
                 if use_ai:
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
+                    
                     # Read full article content
                     article_content = read_article_content(it['url'])
-                    if article_content:
+                    if article_content and len(article_content) > 100:
                         print(f"  📖 Article content length: {len(article_content)} characters")
                         summary = deepseek_summarize(it["title"], article_content)
                         print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
                     else:
-                        print(f"  ⚠️  Article reading failed, using fallback")
-                        # Fallback to original body if article reading fails
-                        summary = ai_summarize(it["title"], it["body"])
+                        print(f"  ⚠️  Article reading failed, using RSS content with DeepSeek")
+                        # Use RSS content but still try DeepSeek summarization
+                        rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
+                        summary = deepseek_summarize(it["title"], rss_content)
+                        print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
