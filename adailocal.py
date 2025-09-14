@@ -318,10 +318,88 @@ def read_article_content(url):
         print(f"  ❌ Error reading article: {e}")
         return ""
 
-def deepseek_summarize(title, article_content):
-    """Use DeepSeek AI to summarize the article content"""
+def deepseek_summarize_from_url(title, article_url):
+    """Use DeepSeek AI to read and summarize the article directly from URL"""
     try:
-        print(f"  🤖 DeepSeek summarizing: {title[:50]}...")
+        print(f"  🤖 DeepSeek reading and summarizing: {title[:50]}...")
+        
+        # Prepare the prompt for DeepSeek to read the article directly
+        prompt = f"""Please read the following news article URL and provide a comprehensive summary in Chinese. The summary should be:
+
+1. **Concise but informative** (200-300 words)
+2. **Include key facts and details**
+3. **Highlight important numbers, dates, and names**
+4. **Maintain the original meaning and context**
+5. **Use clear, professional language**
+
+Article Title: {title}
+Article URL: {article_url}
+
+Please read the full article from the URL and provide only the summary without any additional commentary or formatting."""
+
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.3,
+            "stream": False
+        }
+        
+        print(f"  📤 Sending request to DeepSeek API...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        print(f"  📡 DeepSeek API response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"  ❌ DeepSeek API error: {response.status_code}")
+            print(f"  📄 Response text: {response.text[:500]}...")
+            raise Exception(f"API returned {response.status_code}")
+        
+        try:
+            result = response.json()
+            print(f"  📋 DeepSeek API response keys: {list(result.keys())}")
+        except Exception as e:
+            print(f"  ❌ Failed to parse JSON response: {e}")
+            print(f"  📄 Raw response: {response.text[:500]}...")
+            raise Exception("Invalid JSON response")
+        
+        if 'choices' not in result or not result['choices']:
+            print(f"  ❌ No choices in DeepSeek response")
+            print(f"  📋 Full response: {result}")
+            raise Exception("No choices in API response")
+        
+        if 'message' not in result['choices'][0] or 'content' not in result['choices'][0]['message']:
+            print(f"  ❌ Invalid response structure")
+            print(f"  📋 Choice structure: {result['choices'][0]}")
+            raise Exception("Invalid response structure")
+        
+        summary = result['choices'][0]['message']['content'].strip()
+        
+        if not summary:
+            print(f"  ❌ Empty summary received")
+            raise Exception("Empty summary received")
+        
+        print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+        return summary
+        
+    except Exception as e:
+        print(f"  ❌ DeepSeek API error: {e}")
+        # Fallback to simple truncation
+        return article_content[:500] + "..." if len(article_content) > 500 else article_content
+
+def deepseek_summarize_content(title, article_content):
+    """Use DeepSeek AI to summarize pre-extracted article content"""
+    try:
+        print(f"  🤖 DeepSeek summarizing content: {title[:50]}...")
         
         # Prepare the prompt for DeepSeek
         prompt = f"""Please provide a comprehensive summary of this news article in Chinese. The summary should be:
@@ -733,18 +811,27 @@ def main():
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     
-                    # Read full article content
-                    article_content = read_article_content(it['url'])
-                    if article_content and len(article_content) > 100:
-                        print(f"  📖 Article content length: {len(article_content)} characters")
-                        summary = deepseek_summarize(it["title"], article_content)
-                        print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
-                    else:
-                        print(f"  ⚠️  Article reading failed, using RSS content with DeepSeek")
-                        # Use RSS content but still try DeepSeek summarization
-                        rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
-                        summary = deepseek_summarize(it["title"], rss_content)
-                        print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
+                    # Try direct URL approach first (let DeepSeek read the article)
+                    try:
+                        print(f"  🌐 Letting DeepSeek read article directly from URL")
+                        summary = deepseek_summarize_from_url(it["title"], it['url'])
+                        print(f"  🤖 DeepSeek direct URL summary length: {len(summary)} characters")
+                    except Exception as e:
+                        print(f"  ⚠️  Direct URL approach failed: {e}")
+                        print(f"  🔄 Falling back to content extraction + DeepSeek")
+                        
+                        # Fallback: extract content and then summarize
+                        article_content = read_article_content(it['url'])
+                        if article_content and len(article_content) > 100:
+                            print(f"  📖 Article content length: {len(article_content)} characters")
+                            summary = deepseek_summarize_content(it["title"], article_content)
+                            print(f"  🤖 DeepSeek content summary length: {len(summary)} characters")
+                        else:
+                            print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
+                            # Use RSS content but still try DeepSeek summarization
+                            rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
+                            summary = deepseek_summarize_content(it["title"], rss_content)
+                            print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
