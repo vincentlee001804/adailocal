@@ -195,58 +195,18 @@ def _gen_webhook_sign(secret, timestamp):
 	return base64.b64encode(digest).decode("utf-8")
 
 def send_card_via_webhook(webhook_url, title, content, secret=None):
-	# Try simple text message first to avoid keyword issues
-	simple_payload = { 
-		"msg_type": "text", 
-		"content": {
-			"text": f"{title}\n\n{content}\n\n注:摘要、正文均不代表个人观点"
-		}
-	}
-	
-	# Optional signing
+	# Always send interactive card so markdown links are clickable
+	card = _build_card(title, content + "\n\n注:摘要、正文均不代表个人观点")
+	payload = { "msg_type": "interactive", "card": card }
 	if secret:
 		ts = str(int(time.time()))
 		sign = _gen_webhook_sign(secret, ts)
-		simple_payload.update({ "timestamp": ts, "sign": sign })
-	
-	print(f"  📤 Trying simple text message first...")
-	r = requests.post(webhook_url, json=simple_payload, timeout=TIMEOUT)
+		payload.update({ "timestamp": ts, "sign": sign })
+	r = requests.post(webhook_url, json=payload, timeout=TIMEOUT)
 	print(f"  📡 Webhook response status: {r.status_code}")
-	
 	try:
 		data = r.json()
 		print(f"  📋 Webhook response: {data}")
-		# Check for Feishu-specific error codes
-		if isinstance(data, dict):
-			code = data.get("code")
-			if code == 0:
-				print(f"  ✅ Webhook success with text message: {data}")
-				return
-			else:
-				print(f"  ⚠️  Text message failed (code {code}): {data.get('msg', 'Unknown error')}")
-				print(f"  🔄 Trying card format...")
-		else:
-			print(f"  ✅ Webhook success with text message: {data}")
-			return
-	except Exception as e:
-		print(f"  ⚠️  Text message error: {r.status_code} - {r.text[:200]}...")
-		print(f"  🔄 Trying card format...")
-	
-	# Fallback to card format
-	card = _build_card(title, content)
-	card_payload = { "msg_type": "interactive", "card": card }
-	# Optional signing
-	if secret:
-		ts = str(int(time.time()))
-		sign = _gen_webhook_sign(secret, ts)
-		card_payload.update({ "timestamp": ts, "sign": sign })
-	
-	r = requests.post(webhook_url, json=card_payload, timeout=TIMEOUT)
-	print(f"  📡 Card webhook response status: {r.status_code}")
-	try:
-		data = r.json()
-		print(f"  📋 Card webhook response: {data}")
-		# Check for Feishu-specific error codes
 		if isinstance(data, dict):
 			code = data.get("code")
 			if code == 0:
@@ -257,7 +217,6 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 		else:
 			print(f"  ✅ Webhook success with card: {data}")
 	except Exception as e:
-		# If not JSON, surface status for debugging
 		print(f"  ❌ Webhook error: {r.status_code} - {r.text[:200]}...")
 		print(f"  📄 Raw response: {r.text}")
 		raise e
@@ -1002,18 +961,18 @@ def main():
                                 pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                             malaysia_time = pub_dt.astimezone(malaysia_tz)
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
-                            # Format source name nicely
+                            # Format source name nicely and make it a clickable link
                             source_name = _format_source_name(it['source'])
-                            content = f"{summary}\n\n⏰ {time_str}\n\n来源: {source_name}\n{it['url']}"
+                            content = f"{summary}\n\n⏰ {time_str}\n\n来源：[{source_name}]({it['url']})"
                         else:
                             source_name = _format_source_name(it['source'])
-                            content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
+                            content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                     except:
                         source_name = _format_source_name(it['source'])
-                        content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
+                        content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 else:
                     source_name = _format_source_name(it['source'])
-                    content = f"{summary}\n\n来源: {source_name}\n{it['url']}"
+                    content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
