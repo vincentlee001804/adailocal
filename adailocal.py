@@ -960,11 +960,7 @@ def main():
                 category = classify(it["title"], summary)
                 title = f"【{category}】{it['title']}"
                 
-                # Add required keyword "个人观点" that Feishu webhook needs
-                # This keyword is configured in the Feishu webhook settings
-                # if "个人观点" not in title and "个人观点" not in summary:
-                    # Add the required keyword to ensure webhook accepts the message
-                    title = f"【{category}】{it['title']}"
+                # No extra required keyword; use the generated title as-is
                 
                 # Add publication time to content
                 pub_time = it.get("published_at", "")
