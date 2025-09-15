@@ -196,7 +196,7 @@ def _gen_webhook_sign(secret, timestamp):
 
 def send_card_via_webhook(webhook_url, title, content, secret=None):
 	# Always send interactive card so markdown links are clickable
-	card = _build_card(title, content + "\n\n注:摘要、正文均不代表个人观点")
+	card = _build_card(title, content)
 	payload = { "msg_type": "interactive", "card": card }
 	if secret:
 		ts = str(int(time.time()))
