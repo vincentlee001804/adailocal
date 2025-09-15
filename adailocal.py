@@ -516,7 +516,7 @@ def deepseek_summarize_content(title, article_content):
         # Prepare the prompt for DeepSeek
         prompt = f"""Please provide a comprehensive summary of this news article in Chinese. The summary should be:
 
-1. **Concise but informative** (200-300 words)
+1. **Concise but informative** (50-100 words)
 2. **Include key facts and details**
 3. **Highlight important numbers, dates, and names**
 4. **Maintain the original meaning and context**
@@ -962,9 +962,9 @@ def main():
                 
                 # Add required keyword "个人观点" that Feishu webhook needs
                 # This keyword is configured in the Feishu webhook settings
-                if "个人观点" not in title and "个人观点" not in summary:
+                # if "个人观点" not in title and "个人观点" not in summary:
                     # Add the required keyword to ensure webhook accepts the message
-                    title = f"【{category}】{it['title']} - 个人观点"
+                    title = f"【{category}】{it['title']}"
                 
                 # Add publication time to content
                 pub_time = it.get("published_at", "")
