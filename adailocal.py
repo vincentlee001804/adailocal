@@ -394,7 +394,7 @@ def deepseek_summarize_from_url(title, article_url):
         prompt = f"""Please read the following news article URL and provide:
 
 1. **A Mandarin Chinese title** (简洁明了的中文标题)
-2. **A comprehensive summary in Chinese** (200-300 words)
+2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
 Requirements:
 - Title should be concise and capture the main point
@@ -494,7 +494,21 @@ Please read the full article from the URL and provide only the title and summary
             print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
             print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
             
-            # Return both title and summary as a tuple
+            # Enforce short summary length (<=50 words or <=120 CJK chars)
+            def _limit_summary(text: str) -> str:
+                try:
+                    words = text.split()
+                    if len(words) > 0 and len(words) <= 70:
+                        # If it's likely Chinese (few spaces), cap by characters
+                        compact = text.replace("\n", " ").strip()
+                        if compact and compact.count(' ') < 5:
+                            return compact[:120]
+                    # Otherwise cap by 50 words
+                    return " ".join(words[:50])
+                except Exception:
+                    return text[:120]
+            summary = _limit_summary(summary)
+            # Return both title and shortened summary as a tuple
             return chinese_title, summary
             
         except Exception as e:
@@ -516,7 +530,7 @@ def deepseek_summarize_content(title, article_content):
         # Prepare the prompt for DeepSeek
         prompt = f"""Please provide a comprehensive summary of this news article in Chinese. The summary should be:
 
-1. **Concise but informative** (50-100 words)
+1. **Concise but informative** (no more than 50 words; if Chinese, ≤120 characters)
 2. **Include key facts and details**
 3. **Highlight important numbers, dates, and names**
 4. **Maintain the original meaning and context**
@@ -581,6 +595,18 @@ Please provide only the summary without any additional commentary or formatting.
             raise Exception("Empty summary received")
         
         print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+        # Enforce short summary length (<=50 words or <=120 CJK chars)
+        def _limit_summary(text: str) -> str:
+            try:
+                words = text.split()
+                if len(words) > 0 and len(words) <= 70:
+                    compact = text.replace("\n", " ").strip()
+                    if compact and compact.count(' ') < 5:
+                        return compact[:120]
+                return " ".join(words[:50])
+            except Exception:
+                return text[:120]
+        summary = _limit_summary(summary)
         return summary
         
     except Exception as e:
