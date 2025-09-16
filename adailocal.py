@@ -66,6 +66,11 @@ RSS_FEEDS = [
     #"https://www.orientaldaily.com.my/feed/",
 ]
 
+# Feeds with highest priority (processed first when present)
+PRIORITY_FEEDS = {
+    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml",
+}
+
 # All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
 TIMEOUT = (5, 15)
 
@@ -842,7 +847,9 @@ def ai_summarize(title, body, sentences=3):
 
 def collect_once():
     items = []
-    for feed_url in RSS_FEEDS:
+    # Process priority feeds first, then the rest
+    ordered_feeds = list(PRIORITY_FEEDS) + [u for u in RSS_FEEDS if u not in PRIORITY_FEEDS]
+    for feed_url in ordered_feeds:
         try:
             print(f"Fetching: {feed_url}")
             
