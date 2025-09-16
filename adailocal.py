@@ -176,6 +176,36 @@ def send_card_message(token, chat_id, title, content):
     if data.get("code") != 0:
         print(f"send_fail: {data}")
 
+def send_card_message_with_image(token, chat_id, title, content, image_key):
+    url = f"{BASE}/open-apis/im/v1/messages?receive_id_type=chat_id"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    elements = []
+    if image_key:
+        elements.append({
+            "tag": "img",
+            "img_key": image_key,
+            "alt": {"tag": "plain_text", "content": title}
+        })
+    elements.extend([
+        { "tag": "div", "text": { "tag": "lark_md", "content": content } },
+        { "tag": "hr" },
+        { "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要、正文均不代表个人观点" } }
+    ])
+    card = {
+        "header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
+        "config": { "wide_screen_mode": True },
+        "elements": elements
+    }
+    payload = { "receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card, ensure_ascii=False) }
+    r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    r.raise_for_status()
+    data = r.json()
+    if data.get("code") != 0:
+        print(f"send_fail: {data}")
+
 def _build_card(title, content):
 	return {
 		"header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
@@ -343,6 +373,56 @@ def read_article_content(url):
     except Exception as e:
         print(f"  ❌ Error reading article: {e}")
         return ""
+
+def extract_cover_image_from_html(html, base_url):
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        # Prefer OpenGraph/Twitter cards
+        og = soup.find('meta', property='og:image')
+        if og and og.get('content'):
+            return og['content']
+        tw = soup.find('meta', attrs={'name': 'twitter:image'})
+        if tw and tw.get('content'):
+            return tw['content']
+        # Fallback: first meaningful <img>
+        for img in soup.find_all('img'):
+            src = img.get('src') or img.get('data-src')
+            if src and len(src) > 10 and not src.startswith('data:'):
+                return src
+    except Exception:
+        pass
+    return None
+
+def extract_cover_image(url):
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        return extract_cover_image_from_html(r.text, url)
+    except Exception:
+        return None
+
+def upload_image_to_feishu(token, image_url):
+    try:
+        r = requests.get(image_url, timeout=10)
+        if r.status_code != 200:
+            return None
+        files = {
+            'image': ('cover.jpg', r.content, 'image/jpeg')
+        }
+        data = { 'image_type': 'message' }
+        up = requests.post(f"{BASE}/open-apis/im/v1/images", headers={'Authorization': f'Bearer {token}'}, files=files, data=data, timeout=20)
+        up.raise_for_status()
+        resp = up.json()
+        if resp.get('code') == 0:
+            return resp['data']['image_key']
+        print(f"image_upload_fail: {resp}")
+    except Exception as e:
+        print(f"image_upload_error: {e}")
+    return None
 
 def deepseek_summarize_from_url(title, article_url):
     """Use DeepSeek AI to read and summarize the article directly from URL"""
@@ -835,6 +915,7 @@ def collect_once():
                     "body": body,
                     "source": source_name,
                     "published_at": published_at,
+                    "cover_url": e.get('media_content', [{}])[0].get('url') if isinstance(e.get('media_content'), list) else (e.get('media_content', {}).get('url') if isinstance(e.get('media_content'), dict) else e.get('image') or e.get('enclosure', {}).get('url')),
                 })
                 feed_items += 1
             
@@ -862,7 +943,9 @@ def main():
     if TEST_MODE:
         print("=== RUNNING IN TEST MODE (no actual sending) ===")
 
-    if not webhook_url:
+    USE_APP_API = os.environ.get("USE_APP_API", "0") == "1"
+
+    if not webhook_url or USE_APP_API:
         app_id = os.environ.get("FEISHU_APP_ID", "")
         app_secret = os.environ.get("FEISHU_APP_SECRET", "")
         chat_id = os.environ.get("FEISHU_CHAT_ID", "")
@@ -978,7 +1061,7 @@ def main():
                     print(f"WOULD SEND: {title}")
                     print(f"CONTENT: {content[:100]}...")
                 else:
-                    if webhook_url:
+                    if webhook_url and not USE_APP_API:
                         print(f"📤 Sending via webhook: {webhook_url[:50]}...")
                         print(f"  📝 Title: {title}")
                         print(f"  📄 Content preview: {content[:200]}...")
@@ -991,7 +1074,17 @@ def main():
                     else:
                         print(f"📤 Sending via API (token method)")
                         token = get_tenant_access_token(app_id, app_secret)
-                        send_card_message(token, chat_id, title, content)
+                        image_key = None
+                        # Try to get cover from RSS, else from article page
+                        cover_url = it.get('cover_url')
+                        if not cover_url:
+                            cover_url = extract_cover_image(it['url'])
+                        if cover_url:
+                            image_key = upload_image_to_feishu(token, cover_url)
+                        if image_key:
+                            send_card_message_with_image(token, chat_id, title, content, image_key)
+                        else:
+                            send_card_message(token, chat_id, title, content)
                         print(f"✅ API sent successfully")
                 
                 # Mark this URL as sent (both in-memory and persistent)
