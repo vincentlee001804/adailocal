@@ -40,6 +40,7 @@ BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
     # Primary tech-focused feeds (most reliable)
+    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml",
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
@@ -50,13 +51,13 @@ RSS_FEEDS = [
     "https://www.malaysiakini.com/rss/en/news.rss",
     
     # Additional feeds (may have network restrictions)
-    "https://www.freemalaysiatoday.com/category/nation/feed/",
+    # "https://www.freemalaysiatoday.com/category/nation/feed/",
     "https://www.astroawani.com/rss/english",
     "https://www.astroawani.com/rss/terkini",
     "https://www.sinarharian.com.my/rss/terkini",
-    "https://www.hmetro.com.my/terkini.rss",
-    "https://www.bernama.com/en/rss.php",
-    "https://www.theedgemalaysia.com/rss.xml",
+    # "https://www.hmetro.com.my/terkini.rss",
+    # "https://www.bernama.com/en/rss.php",
+    # "https://www.theedgemalaysia.com/rss.xml",
     
     # Commented out feeds that may not work on PythonAnywhere
     # "https://www.thestar.com.my/rss/News/Nation",
