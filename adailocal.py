@@ -46,7 +46,7 @@ RSS_FEEDS = [
     
     # Fallback feeds that are more likely to work on PythonAnywhere
     "https://feeds.feedburner.com/soyacincau",
-    "https://www.nst.com.my/rss.xml",
+    # "https://www.nst.com.my/rss.xml",
     "https://www.malaysiakini.com/rss/en/news.rss",
     
     # Additional feeds (may have network restrictions)
