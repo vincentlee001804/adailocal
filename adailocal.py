@@ -924,6 +924,7 @@ def collect_once():
                     "source": source_name,
                     "published_at": published_at,
                     "cover_url": e.get('media_content', [{}])[0].get('url') if isinstance(e.get('media_content'), list) else (e.get('media_content', {}).get('url') if isinstance(e.get('media_content'), dict) else e.get('image') or e.get('enclosure', {}).get('url')),
+                    "priority": feed_url in PRIORITY_FEEDS,
                 })
                 feed_items += 1
             
@@ -979,13 +980,11 @@ def main():
             print(f"=== Starting collection cycle ===")
             items = collect_once()
             print(f"=== Found {len(items)} total items ===")
-            # Sort by published_at to get the absolute latest news first
+            # Sort by priority first, then by published_at (latest first)
             def _k(it):
-                published_at = it.get("published_at") or ""
-                # If no date, put at end (lowest priority)
-                if not published_at:
-                    return "1970-01-01T00:00:00"
-                return published_at
+                priority = 1 if it.get("priority") else 0
+                published_at = it.get("published_at") or "1970-01-01T00:00:00"
+                return (priority, published_at)
             items.sort(key=_k, reverse=True)
             
             # Log the top 10 most recent items for verification
