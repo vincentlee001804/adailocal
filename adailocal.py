@@ -270,11 +270,8 @@ def _format_source_name(source):
     source = source.replace(" - All", "").replace(" - Latest News", "").replace(" RSS", "")
     source = source.replace("Online", "").replace("Latest", "").replace("News", "")
     source = source.replace("  ", " ").strip()
-    
-    # Add "新闻" suffix if not present
-    if not any(word in source for word in ["新闻", "News", "网", "报", "时报"]):
-        source += "新闻"
-    
+
+    # Do not append any suffix; show the original media name only
     return source
 
 def read_article_content(url):
