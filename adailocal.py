@@ -656,6 +656,20 @@ Please provide only the summary without any additional commentary or formatting.
         # Fallback to simple truncation
         return article_content[:500] + "..." if len(article_content) > 500 else article_content
 
+def _contains_kw(text_lc: str, keywords):
+    import re
+    for kw in keywords:
+        k = kw.lower()
+        # Use word-boundary matching for plain latin words to avoid 'goal' matching 'global'
+        if all(('a' <= ch <= 'z') or ch == ' ' for ch in k) and len(k) >= 3:
+            pattern = r"\\b" + re.escape(k) + r"\\b"
+            if re.search(pattern, text_lc):
+                return True
+        else:
+            if k in text_lc:
+                return True
+    return False
+
 def classify(title, text):
     t = (title + " " + text).lower()
     
@@ -722,6 +736,7 @@ def classify(title, text):
     
     # 科技 (Technology) - Expanded keywords
     tech_keywords = [
+        "小米", "华为", "红米", "荣耀", "发布", "新品", "参数", "处理器", "相机", "镜头",
         "ai", "artificial intelligence", "tech", "technology", "startup", "software", "chip", "semiconductor",
         "digital", "innovation", "smartphone", "mobile", "gadget", "device", "hardware", "app", "application",
         "computer", "laptop", "desktop", "tablet", "ipad", "iphone", "android", "ios", "windows", "mac",
@@ -798,11 +813,11 @@ def classify(title, text):
     ]
     
     # Check categories in order of specificity
-    if any(x in t for x in economy_keywords): return "经济"
-    if any(x in t for x in disaster_keywords): return "灾害"
-    if any(x in t for x in sports_keywords): return "体育"
-    if any(x in t for x in tech_keywords): return "科技"
-    if any(x in t for x in entertainment_keywords): return "文娱"
+    if _contains_kw(t, economy_keywords): return "经济"
+    if _contains_kw(t, disaster_keywords): return "灾害"
+    if _contains_kw(t, sports_keywords): return "体育"
+    if _contains_kw(t, tech_keywords): return "科技"
+    if _contains_kw(t, entertainment_keywords): return "文娱"
     return "综合"
 
 def summarize(title, body):
