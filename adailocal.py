@@ -996,9 +996,13 @@ def main():
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
                     continue
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
-                
+
+                # For priority sources, keep original content (no AI summary/translation)
+                if it.get("priority"):
+                    print(f"  🛑 Priority source: using original RSS title/content without AI")
+                    summary = it["body"] or it["title"]
                 # Use DeepSeek for AI summarization if enabled
-                if use_ai:
+                elif use_ai:
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     
