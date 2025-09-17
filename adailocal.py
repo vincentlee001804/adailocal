@@ -997,10 +997,18 @@ def main():
                     continue
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
 
-                # For priority sources, keep original content (no AI summary/translation)
+                # For priority sources, keep original content; still allow AI to generate a better Chinese title
                 if it.get("priority"):
-                    print(f"  🛑 Priority source: using original RSS title/content without AI")
+                    print(f"  🛑 Priority source: keep original content. AI may generate title only.")
                     summary = it["body"] or it["title"]
+                    if use_ai:
+                        try:
+                            chinese_title, _tmp_summary = deepseek_summarize_from_url(it["title"], it['url'])
+                            if chinese_title:
+                                it["title"] = chinese_title
+                                print(f"  🏷️  AI-generated Chinese title (priority): {chinese_title[:40]}...")
+                        except Exception as e:
+                            print(f"  ⚠️  AI title gen failed for priority source: {e}")
                 # Use DeepSeek for AI summarization if enabled
                 elif use_ai:
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
