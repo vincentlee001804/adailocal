@@ -656,6 +656,52 @@ Please provide only the summary without any additional commentary or formatting.
         # Fallback to simple truncation
         return article_content[:500] + "..." if len(article_content) > 500 else article_content
 
+def deepseek_verify_category(title: str, summary: str) -> str:
+    """Ask DeepSeek to classify the news into one of fixed categories.
+    Returns a label in {经济, 灾害, 体育, 科技, 文娱, 综合} or empty string on failure.
+    """
+    try:
+        print("  🤖 DeepSeek verifying category...")
+        prompt = f"""你是新闻分类助手。请根据下列标题和简要内容，判断其所属类别，并只输出以下六个标签中的一个：
+经济 / 灾害 / 体育 / 科技 / 文娱 / 综合。
+
+标题: {title}
+内容: {summary}
+
+只输出一个标签，不要输出任何解释或其他文字。"""
+
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        data = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 10,
+            "temperature": 0.0,
+            "stream": False
+        }
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=20)
+        if response.status_code != 200:
+            print(f"  ❌ DeepSeek cat API error: {response.status_code}")
+            return ""
+        result = response.json()
+        label = (result.get('choices', [{}])[0].get('message', {}).get('content') or '').strip()
+        valid = {"经济", "灾害", "体育", "科技", "文娱", "综合"}
+        if label in valid:
+            print(f"  ✅ DeepSeek category: {label}")
+            return label
+        # Sometimes wrapped in extra text; try to pick the first valid token
+        for v in valid:
+            if v in label:
+                print(f"  ✅ DeepSeek category (extracted): {v}")
+                return v
+        print(f"  ⚠️ DeepSeek category invalid: {label}")
+        return ""
+    except Exception as e:
+        print(f"  ❌ DeepSeek category verify error: {e}")
+        return ""
+
 def _contains_kw(text_lc: str, keywords):
     import re
     for kw in keywords:
@@ -1057,6 +1103,11 @@ def main():
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
                 category = classify(it["title"], summary)
+                # Optional AI category verification
+                if use_ai and os.environ.get("AI_CATEGORY_VERIFY", "1") == "1":
+                    ai_cat = deepseek_verify_category(it["title"], summary)
+                    if ai_cat:
+                        category = ai_cat
                 title = f"【{category}】{it['title']}"
                 
                 # No extra required keyword; use the generated title as-is
