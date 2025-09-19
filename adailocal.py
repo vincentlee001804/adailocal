@@ -442,12 +442,14 @@ def deepseek_summarize_from_url(title, article_url):
 2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
 Requirements:
+- **Title MUST be in Mandarin Chinese** (not English)
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
 - **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
 - **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
 - **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
+- **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
 - Maintain original meaning and context
@@ -584,12 +586,14 @@ def deepseek_summarize_content(title, article_content):
 2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
 Requirements:
+- **Title MUST be in Mandarin Chinese** (not English)
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
 - **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
 - **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
 - **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
+- **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
 - Maintain original meaning and context
