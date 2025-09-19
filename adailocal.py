@@ -438,11 +438,13 @@ def deepseek_summarize_from_url(title, article_url):
         # Prepare the prompt for DeepSeek to read the article directly
         prompt = f"""Please read the following news article URL and provide:
 
-1. **A Mandarin Chinese title** (简洁明了的中文标题)
+1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
 2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
 Requirements:
 - Title should be concise and capture the main point
+- Add appropriate category tag in front of title using format 【分类】
+- Category options: 科技、娱乐、经济、体育、灾难、综合
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
 - Maintain original meaning and context
@@ -452,8 +454,8 @@ Article Title: {title}
 Article URL: {article_url}
 
 Please provide the response in this exact format:
-标题: [Mandarin Chinese title]
-摘要: [Chinese summary]
+标题: 【分类】中文标题
+摘要: 中文摘要
 
 Please read the full article from the URL and provide only the title and summary without any additional commentary."""
 
@@ -573,20 +575,30 @@ def deepseek_summarize_content(title, article_content):
         print(f"  🤖 DeepSeek summarizing content: {title[:50]}...")
         
         # Prepare the prompt for DeepSeek
-        prompt = f"""Please provide a comprehensive summary of this news article in Chinese. The summary should be:
+        prompt = f"""Please analyze this news article and provide:
 
-1. **Concise but informative** (no more than 50 words; if Chinese, ≤120 characters)
-2. **Include key facts and details**
-3. **Highlight important numbers, dates, and names**
-4. **Maintain the original meaning and context**
-5. **Use clear, professional language**
+1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
+2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
+
+Requirements:
+- Title should be concise and capture the main point
+- Add appropriate category tag in front of title using format 【分类】
+- Category options: 科技、娱乐、经济、体育、灾难、综合
+- Summary should be informative with key facts and details
+- Include important numbers, dates, and names
+- Maintain original meaning and context
+- Use clear, professional language
 
 Article Title: {title}
 
 Article Content:
 {article_content}
 
-Please provide only the summary without any additional commentary or formatting."""
+Please provide the response in this exact format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+
+Please provide only the title and summary without any additional commentary."""
 
         headers = {
             'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
@@ -633,26 +645,65 @@ Please provide only the summary without any additional commentary or formatting.
             print(f"  📋 Choice structure: {result['choices'][0]}")
             raise Exception("Invalid response structure")
         
-        summary = result['choices'][0]['message']['content'].strip()
+        content = result['choices'][0]['message']['content'].strip()
         
-        if not summary:
-            print(f"  ❌ Empty summary received")
-            raise Exception("Empty summary received")
+        if not content:
+            print(f"  ❌ Empty content received")
+            raise Exception("Empty content received")
         
-        print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
-        # Enforce short summary length (<=50 words or <=120 CJK chars)
-        def _limit_summary(text: str) -> str:
-            try:
-                words = text.split()
-                if len(words) > 0 and len(words) <= 70:
-                    compact = text.replace("\n", " ").strip()
-                    if compact and compact.count(' ') < 5:
-                        return compact[:120]
-                return " ".join(words[:50])
-            except Exception:
-                return text[:120]
-        summary = _limit_summary(summary)
-        return summary
+        # Parse the response to extract title and summary
+        try:
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:'):
+                    # If no title found yet, this might be the title
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:'):
+                    # If we have a title, this is part of the summary
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
+            
+            # If we couldn't parse properly, use the whole content as summary
+            if not chinese_title or not summary:
+                print(f"  ⚠️  Could not parse title/summary, using full content")
+                chinese_title = title  # Fallback to original title
+                summary = content
+            
+            print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
+            print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+            
+            # Enforce short summary length (<=50 words or <=120 CJK chars)
+            def _limit_summary(text: str) -> str:
+                try:
+                    words = text.split()
+                    if len(words) > 0 and len(words) <= 70:
+                        # If it's likely Chinese (few spaces), cap by characters
+                        compact = text.replace("\n", " ").strip()
+                        if compact and compact.count(' ') < 5:
+                            return compact[:120]
+                    # Otherwise cap by 50 words
+                    return " ".join(words[:50])
+                except Exception:
+                    return text[:120]
+            summary = _limit_summary(summary)
+            # Return both title and shortened summary as a tuple
+            return chinese_title, summary
+            
+        except Exception as e:
+            print(f"  ⚠️  Error parsing response: {e}")
+            print(f"  📄 Raw content: {content[:200]}...")
+            # Fallback: return original title and full content as summary
+            return title, content
         
     except Exception as e:
         print(f"  ❌ DeepSeek API error: {e}")
@@ -1094,24 +1145,42 @@ def main():
                         article_content = read_article_content(it['url'])
                         if article_content and len(article_content) > 100:
                             print(f"  📖 Article content length: {len(article_content)} characters")
-                            summary = deepseek_summarize_content(it["title"], article_content)
+                            chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
+                            if chinese_title:
+                                it["title"] = chinese_title
+                                print(f"  🏷️  AI-generated Chinese title (fallback): {chinese_title[:40]}...")
                             print(f"  🤖 DeepSeek content summary length: {len(summary)} characters")
                         else:
                             print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
                             # Use RSS content but still try DeepSeek summarization
                             rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
-                            summary = deepseek_summarize_content(it["title"], rss_content)
+                            chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
+                            if chinese_title:
+                                it["title"] = chinese_title
+                                print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
                             print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
-                category = classify(it["title"], summary)
-                # Optional AI category verification
-                if use_ai and os.environ.get("AI_CATEGORY_VERIFY", "1") == "1":
-                    ai_cat = deepseek_verify_category(it["title"], summary)
-                    if ai_cat:
-                        category = ai_cat
-                title = f"【{category}】{it['title']}"
+                # Extract category from title if it contains 【】 tags, otherwise use rule-based classification
+                if "【" in it["title"] and "】" in it["title"]:
+                    # Extract category from title (e.g., 【科技】标题 -> 科技)
+                    try:
+                        start = it["title"].find("【") + 1
+                        end = it["title"].find("】")
+                        if start > 0 and end > start:
+                            category = it["title"][start:end]
+                            print(f"  🏷️  Category extracted from title: {category}")
+                            title = it["title"]  # Use the title as-is since it already has the category
+                        else:
+                            category = classify(it["title"], summary)
+                            title = f"【{category}】{it['title']}"
+                    except:
+                        category = classify(it["title"], summary)
+                        title = f"【{category}】{it['title']}"
+                else:
+                    category = classify(it["title"], summary)
+                    title = f"【{category}】{it['title']}"
                 
                 # No extra required keyword; use the generated title as-is
                 
