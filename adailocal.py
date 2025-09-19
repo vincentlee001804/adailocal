@@ -445,6 +445,9 @@ Requirements:
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
+- **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
+- **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
+- **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
 - Maintain original meaning and context
@@ -584,6 +587,9 @@ Requirements:
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
+- **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
+- **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
+- **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
 - Maintain original meaning and context
