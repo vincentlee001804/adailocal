@@ -40,7 +40,10 @@ BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
     # Primary tech-focused feeds (most reliable)
-    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml",
+    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
+    "https://rss.app/feeds/r5wzRVVTbqYIyfSE.xml", #ZingGadget MY Fb
+    "https://rss.app/feeds/DQPaHn61uiC3hfmk.xml", #TechnaveCN MY Fb
+    "https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml", #Soyacincau MY Fb
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
