@@ -2,6 +2,7 @@
 # deps: pip install requests feedparser beautifulsoup4 python-dateutil
 
 import os, time, json, hashlib, requests
+import re
 import hmac, base64, hashlib as _hashlib
 import feedparser
 from bs4 import BeautifulSoup
@@ -399,6 +400,81 @@ def extract_cover_image_from_html(html, base_url):
         pass
     return None
 
+def _extract_numeric_facts(text: str):
+    """Extract numeric facts (prices, currencies, dates-like numbers) from text.
+    Returns a dict with sets: prices, currencies, numbers, raw_tokens.
+    """
+    try:
+        if not text:
+            return {"prices": set(), "currencies": set(), "numbers": set(), "raw_tokens": set()}
+        tokens = set()
+        prices = set()
+        currencies = set()
+        numbers = set()
+        specs = set()
+        # Common currency symbols and codes
+        currency_patterns = [r"RM\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"MYR\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"USD\s?\$?\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"US\$\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"\$\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"SGD\s?\$?\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"EUR\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?", r"£\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?"]
+        for pat in currency_patterns:
+            for m in re.findall(pat, text, flags=re.IGNORECASE):
+                prices.add(m.strip())
+                tokens.add(m.strip())
+        # Specs with units (e.g., 6.7-inch, 120Hz, 5000mAh, 12GB, 200MP, 120W)
+        spec_patterns = [
+            r"\b\d{1,2}(?:\.\d)?\s?(?:inch|in|英寸)\b",
+            r"\b\d{2,4}\s?mAh\b",
+            r"\b\d{2,4}\s?Hz\b",
+            r"\b\d{1,3}\s?(?:GB|TB)\b",
+            r"\b\d{1,3}\s?MP\b",
+            r"\b\d{1,3}\s?W\b",
+            r"\b\d{2,4}x\d{2,4}\b",
+            r"\b\d{2,3}%\b",
+            r"\b\d{2}\s?nm\b",
+        ]
+        for pat in spec_patterns:
+            for m in re.findall(pat, text, flags=re.IGNORECASE):
+                specs.add(m.strip())
+                tokens.add(m.strip())
+        # Standalone numbers (avoid years already captured by prices)
+        for m in re.findall(r"\b\d{1,3}(?:[,\.]\d{3})*(?:\.\d+)?\b", text):
+            numbers.add(m)
+            tokens.add(m)
+        # Currency mentions without amounts
+        for m in re.findall(r"\b(RM|MYR|USD|US\$|SGD|EUR|GBP)\b", text, flags=re.IGNORECASE):
+            currencies.add(m.upper())
+        # Merge specs into tokens
+        tokens |= specs
+        return {"prices": prices, "currencies": currencies, "numbers": numbers, "specs": specs, "raw_tokens": tokens}
+    except Exception:
+        return {"prices": set(), "currencies": set(), "numbers": set(), "specs": set(), "raw_tokens": set()}
+
+def _find_numeric_tokens(text: str):
+    if not text:
+        return set()
+    found = set()
+    # capture currency+amount and plain numbers
+    for m in re.findall(r"(RM\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|MYR\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|USD\s?\$?\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|US\$\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|SGD\s?\$?\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\$\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|£\s?\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\b\d{1,3}(?:[,\.]\d{3})*(?:\.\d+)?\b|\b\d{1,2}(?:\.\d)?\s?(?:inch|in|英寸)\b|\b\d{2,4}\s?mAh\b|\b\d{2,4}\s?Hz\b|\b\d{1,3}\s?(?:GB|TB)\b|\b\d{1,3}\s?MP\b|\b\d{1,3}\s?W\b|\b\d{2,4}x\d{2,4}\b|\b\d{2}\s?nm\b|\b\d{2,3}%\b)", text, flags=re.IGNORECASE):
+        found.add(m.strip())
+    return found
+
+def _numbers_consistent(summary: str, source_facts: dict) -> bool:
+    """Return True if all numeric tokens in summary are present in source facts (prices/numbers)."""
+    try:
+        if not summary:
+            return True
+        summary_nums = _find_numeric_tokens(summary)
+        if not summary_nums:
+            return True
+        source_tokens = set(source_facts.get("raw_tokens", set())) | set(source_facts.get("prices", set())) | set(source_facts.get("numbers", set()))
+        # simple normalization: remove spaces in currency like "RM 1,299" -> "RM1,299"
+        def _norm_set(s):
+            out = set()
+            for t in s:
+                out.add(t.replace(" ", ""))
+            return out
+        return _norm_set(summary_nums).issubset(_norm_set(source_tokens))
+    except Exception:
+        return True
+
 def extract_cover_image(url):
     try:
         headers = {
@@ -436,6 +512,11 @@ def deepseek_summarize_from_url(title, article_url):
         print(f"  🤖 DeepSeek reading and summarizing: {title[:50]}...")
         
         # Prepare the prompt for DeepSeek to read the article directly
+        # Include extracted numeric/spec facts to ground the model
+        source_text_for_facts = read_article_content(article_url)
+        facts = _extract_numeric_facts(source_text_for_facts)
+        facts_list = sorted(list(facts.get('raw_tokens', set())))
+        facts_block = "\n".join(facts_list[:40])  # cap to reasonable length
         prompt = f"""Please read the following news article URL and provide:
 
 1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
@@ -452,6 +533,9 @@ Requirements:
 - **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
+- Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
+- If multiple prices are mentioned, pick the main product's price as stated.
+- Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
 - Maintain original meaning and context
 - Use clear, professional language
 
@@ -461,6 +545,11 @@ Article URL: {article_url}
 Please provide the response in this exact format:
 标题: 【分类】中文标题
 摘要: 中文摘要
+
+Use ONLY numeric values present in the article or in this extracted facts list, and keep the exact units/currency/casing. If a number is not in the facts list and you are unsure, omit it.
+
+Facts (from article text, may be partial):
+{facts_block}
 
 Please read the full article from the URL and provide only the title and summary without any additional commentary."""
 
@@ -478,7 +567,7 @@ Please read the full article from the URL and provide only the title and summary
                 }
             ],
             "max_tokens": 500,
-            "temperature": 0.3,
+            "temperature": 0.1,
             "stream": False
         }
         
@@ -545,6 +634,56 @@ Please read the full article from the URL and provide only the title and summary
             
             print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
             print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+
+            # Numeric consistency check by reading article content locally
+            try:
+                source_text = read_article_content(article_url)
+                facts = _extract_numeric_facts(source_text)
+                if not _numbers_consistent(summary, facts):
+                    print("  ⚠️  Numeric inconsistency detected. Regenerating with extracted facts context.")
+                    facts_text = "\n".join(sorted(facts.get("prices", set())))
+                    regen_prompt = f"""You summarized this article, but the numeric facts must be exact. Here are numeric facts extracted from the article; ONLY use numbers from this list. If none are relevant, omit numbers.
+
+Facts:
+{facts_text}
+
+Now output again in the same format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+"""
+                    headers = {
+                        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+                        'Content-Type': 'application/json'
+                    }
+                    data2 = {
+                        "model": "deepseek-chat",
+                        "messages": [
+                            {"role": "system", "content": "You must not invent numbers. Use only given facts."},
+                            {"role": "user", "content": regen_prompt}
+                        ],
+                        "max_tokens": 400,
+                        "temperature": 0.0,
+                        "stream": False
+                    }
+                    r2 = requests.post(DEEPSEEK_API_URL, headers=headers, json=data2, timeout=20)
+                    if r2.status_code == 200:
+                        j2 = r2.json()
+                        new_content = (j2.get('choices', [{}])[0].get('message', {}).get('content') or '').strip()
+                        if new_content:
+                            # reparse
+                            lines2 = new_content.split('\n')
+                            ct2, sm2 = chinese_title, summary
+                            for line in lines2:
+                                s = line.strip()
+                                if s.startswith('标题:'):
+                                    ct2 = s.replace('标题:', '').strip()
+                                elif s.startswith('摘要:'):
+                                    sm2 = s.replace('摘要:', '').strip()
+                            if ct2 and sm2:
+                                chinese_title, summary = ct2, sm2
+                                print("  🔁 Replaced with fact-consistent summary.")
+            except Exception as _e:
+                print(f"  ⚠️  Consistency check failed: {_e}")
             
             # Enforce short summary length (<=50 words or <=120 CJK chars)
             def _limit_summary(text: str) -> str:
@@ -580,6 +719,9 @@ def deepseek_summarize_content(title, article_content):
         print(f"  🤖 DeepSeek summarizing content: {title[:50]}...")
         
         # Prepare the prompt for DeepSeek
+        facts = _extract_numeric_facts(article_content)
+        facts_list = sorted(list(facts.get('raw_tokens', set())))
+        facts_block = "\n".join(facts_list[:40])
         prompt = f"""Please analyze this news article and provide:
 
 1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
@@ -596,6 +738,9 @@ Requirements:
 - **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
+- Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
+- If multiple prices are mentioned, pick the main product's price as stated.
+- Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
 - Maintain original meaning and context
 - Use clear, professional language
 
@@ -607,6 +752,11 @@ Article Content:
 Please provide the response in this exact format:
 标题: 【分类】中文标题
 摘要: 中文摘要
+
+Use ONLY numeric values present in the article or in this extracted facts list, and keep the exact units/currency/casing. If a number is not in the facts list and you are unsure, omit it.
+
+Facts (from article text, may be partial):
+{facts_block}
 
 Please provide only the title and summary without any additional commentary."""
 
@@ -624,7 +774,7 @@ Please provide only the title and summary without any additional commentary."""
                 }
             ],
             "max_tokens": 500,
-            "temperature": 0.3,
+            "temperature": 0.1,
             "stream": False
         }
         
@@ -691,6 +841,54 @@ Please provide only the title and summary without any additional commentary."""
             
             print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
             print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+
+            # Numeric consistency check using provided article_content
+            try:
+                facts = _extract_numeric_facts(article_content)
+                if not _numbers_consistent(summary, facts):
+                    print("  ⚠️  Numeric inconsistency detected (content). Regenerating with facts.")
+                    facts_text = "\n".join(sorted(facts.get("prices", set())))
+                    regen_prompt = f"""You summarized this article, but numeric facts must be exact. ONLY use numbers from the facts list; if not present, omit numbers.
+
+Facts:
+{facts_text}
+
+Now output again in the same format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+"""
+                    headers = {
+                        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+                        'Content-Type': 'application/json'
+                    }
+                    data2 = {
+                        "model": "deepseek-chat",
+                        "messages": [
+                            {"role": "system", "content": "You must not invent numbers. Use only given facts."},
+                            {"role": "user", "content": regen_prompt}
+                        ],
+                        "max_tokens": 400,
+                        "temperature": 0.0,
+                        "stream": False
+                    }
+                    r2 = requests.post(DEEPSEEK_API_URL, headers=headers, json=data2, timeout=20)
+                    if r2.status_code == 200:
+                        j2 = r2.json()
+                        new_content = (j2.get('choices', [{}])[0].get('message', {}).get('content') or '').strip()
+                        if new_content:
+                            lines2 = new_content.split('\n')
+                            ct2, sm2 = chinese_title, summary
+                            for line in lines2:
+                                s = line.strip()
+                                if s.startswith('标题:'):
+                                    ct2 = s.replace('标题:', '').strip()
+                                elif s.startswith('摘要:'):
+                                    sm2 = s.replace('摘要:', '').strip()
+                            if ct2 and sm2:
+                                chinese_title, summary = ct2, sm2
+                                print("  🔁 Replaced with fact-consistent summary (content path).")
+            except Exception as _e:
+                print(f"  ⚠️  Consistency check failed (content): {_e}")
             
             # Enforce short summary length (<=50 words or <=120 CJK chars)
             def _limit_summary(text: str) -> str:
