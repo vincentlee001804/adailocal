@@ -202,7 +202,7 @@ def send_card_message_with_image(token, chat_id, title, content, image_key):
     elements.extend([
         { "tag": "div", "text": { "tag": "lark_md", "content": content } },
         { "tag": "hr" },
-        { "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要、正文均不代表个人观点" } }
+        { "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要，正文均不代表个人观点。摘要经过AI总结,可能存在误差,请以原文为准。" } }
     ])
     card = {
         "header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
