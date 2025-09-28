@@ -317,6 +317,39 @@ def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
 
+def _extract_source_from_url(url):
+    """Extract source name from article URL"""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        
+        # Remove www. prefix
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        
+        # Map domains to friendly names
+        domain_mapping = {
+            'lowyat.net': 'Lowyat.NET',
+            'soyacincau.com': 'SoyaCincau',
+            'amanz.my': 'Amanz',
+            'malaysiakini.com': 'Malaysiakini',
+            'astroawani.com': 'Astro Awani',
+            'thestar.com.my': 'The Star',
+            'nst.com.my': 'New Straits Times',
+            'bernama.com': 'Bernama',
+            'freemalaysiatoday.com': 'Free Malaysia Today',
+            'sinarharian.com.my': 'Sinar Harian',
+            'hmetro.com.my': 'Harian Metro',
+            'chinapress.com.my': 'China Press',
+            'orientaldaily.com.my': 'Oriental Daily',
+            'sinchew.com.my': 'Sin Chew Daily'
+        }
+        
+        return domain_mapping.get(domain, domain.title())
+    except Exception:
+        return "未知来源"
+
 def _format_source_name(source):
     """Format source name to be more user-friendly"""
     if not source:
@@ -338,6 +371,10 @@ def _format_source_name(source):
         # Extract the search term and use it as source
         search_term = source.replace(" - Google", "").strip()
         return search_term
+    
+    # Handle Google News feeds - try to extract actual source from URL patterns
+    if "news.google.com" in source or "Google News" in source:
+        return "Google News"
     
     # Handle specific known sources
     if "lowyat" in source.lower():
@@ -1673,67 +1710,35 @@ def main():
                     print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     
-                    # Try direct URL approach first (let DeepSeek read the article)
-                    try:
-                        print(f"  🌐 Letting DeepSeek read article directly from URL")
-                        print(f"  🔗 URL being processed: {it['url']}")
-                        print(f"  📰 Original title: {it['title']}")
-                        chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
+                    # Google News approach: Use Google News to discover, then follow actual source
+                    print(f"  🌐 Google News discovery approach:")
+                    print(f"  🔗 Source URL: {it['url']}")
+                    print(f"  📰 Original title: {it['title']}")
+                    
+                    # Extract content from the actual source URL (not Google News)
+                    article_content = read_article_content(it['url'])
+                    
+                    if article_content and len(article_content) > 100:
+                        print(f"  📖 Article content extracted: {len(article_content)} characters")
+                        print(f"  📄 Content preview: {article_content[:200]}...")
+                        
+                        # Use DeepSeek to summarize the actual article content
+                        chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
                         print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
-                        print(f"  🤖 DeepSeek direct URL summary length: {len(summary)} characters")
+                        print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
                         print(f"  📄 Summary preview: {summary[:150]}...")
-                        
-                        # Validation: Check if summary content matches the URL
-                        url_lower = it['url'].lower()
-                        summary_lower = summary.lower()
-                        title_lower = it['title'].lower()
-                        
-                        # Check for content mismatch - focus on mobile tech brands
-                        mobile_brands = ['xiaomi', 'redmi', 'samsung', 'apple', 'iphone', 'oneplus', 'oppo', 'vivo', 'huawei', 'realme']
-                        gaming_terms = ['forza', 'gaming', 'playstation', 'xbox', 'nintendo']
-                        
-                        url_has_mobile = any(brand in url_lower for brand in mobile_brands)
-                        summary_has_mobile = any(brand in summary_lower for brand in mobile_brands)
-                        url_has_gaming = any(term in url_lower for term in gaming_terms)
-                        summary_has_gaming = any(term in summary_lower for term in gaming_terms)
-                        
-                        if url_has_mobile and summary_has_gaming:
-                            print(f"  ❌ CONTENT MISMATCH: URL is about mobile tech but summary mentions gaming!")
-                            print(f"  🔄 Attempting to regenerate with stricter constraints...")
-                            try:
-                                chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
-                                print(f"  🔁 Regenerated summary: {summary[:150]}...")
-                            except Exception as regen_e:
-                                print(f"  ❌ Regeneration failed: {regen_e}")
-                        elif url_has_gaming and summary_has_mobile:
-                            print(f"  ❌ CONTENT MISMATCH: URL is about gaming but summary mentions mobile tech!")
-                        elif url_has_mobile and not summary_has_mobile:
-                            print(f"  ⚠️  URL mentions mobile brands but summary doesn't - may need regeneration")
                         
                         # Use the Chinese title from DeepSeek
                         it["title"] = chinese_title
-                    except Exception as e:
-                        print(f"  ⚠️  Direct URL approach failed: {e}")
-                        print(f"  🔄 Falling back to content extraction + DeepSeek")
-                        
-                        # Fallback: extract content and then summarize
-                        article_content = read_article_content(it['url'])
-                        if article_content and len(article_content) > 100:
-                            print(f"  📖 Article content length: {len(article_content)} characters")
-                            chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
-                            if chinese_title:
-                                it["title"] = chinese_title
-                                print(f"  🏷️  AI-generated Chinese title (fallback): {chinese_title[:40]}...")
-                            print(f"  🤖 DeepSeek content summary length: {len(summary)} characters")
-                        else:
-                            print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
-                            # Use RSS content but still try DeepSeek summarization
-                            rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
-                            chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
-                            if chinese_title:
-                                it["title"] = chinese_title
-                                print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
-                            print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
+                    else:
+                        print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
+                        # Fallback: Use RSS content but still try DeepSeek summarization
+                        rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
+                        chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
+                        if chinese_title:
+                            it["title"] = chinese_title
+                            print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
+                        print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
@@ -1773,17 +1778,17 @@ def main():
                                 pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                             malaysia_time = pub_dt.astimezone(malaysia_tz)
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
-                            # Format source name nicely and make it a clickable link
-                            source_name = _format_source_name(it['source'])
+                            # Format source name from actual article URL (not RSS feed)
+                            source_name = _extract_source_from_url(it['url'])
                             content = f"{summary}\n\n⏰ {time_str}\n\n来源：[{source_name}]({it['url']})"
                         else:
-                            source_name = _format_source_name(it['source'])
+                            source_name = _extract_source_from_url(it['url'])
                             content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                     except:
-                        source_name = _format_source_name(it['source'])
+                        source_name = _extract_source_from_url(it['url'])
                         content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 else:
-                    source_name = _format_source_name(it['source'])
+                    source_name = _extract_source_from_url(it['url'])
                     content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 
                 if TEST_MODE:
