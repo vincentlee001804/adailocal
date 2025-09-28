@@ -589,6 +589,27 @@ def deepseek_summarize_from_url(title, article_url):
         facts = _extract_numeric_facts(source_text_for_facts)
         facts_list = sorted(list(facts.get('raw_tokens', set())))
         facts_block = "\n".join(facts_list[:40])  # cap to reasonable length
+        
+        # Extract key product names and brands from source
+        source_lower = source_text_for_facts.lower()
+        mentioned_products = []
+        mentioned_brands = []
+        
+        # Look for specific product mentions
+        if 'iqoo' in source_lower:
+            mentioned_products.append('iQOO')
+        if 'x300' in source_lower:
+            mentioned_products.append('X300')
+        if 'y28' in source_lower:
+            mentioned_products.append('Y28')
+        if 'vivo' in source_lower:
+            mentioned_brands.append('vivo')
+        if 'originos' in source_lower:
+            mentioned_products.append('OriginOS')
+        
+        products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
+        brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
+        
         prompt = f"""Please read the following news article URL and provide:
 
 1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
@@ -619,6 +640,12 @@ Please provide the response in this exact format:
 摘要: 中文摘要
 
 Use ONLY numeric values present in the article or in this extracted facts list, and keep the exact units/currency/casing. If a number is not in the facts list and you are unsure, omit it.
+
+CRITICAL: Only mention products, brands, and models that are explicitly mentioned in the source article. Do NOT add products not mentioned in the source.
+
+Source context:
+{products_context}
+{brands_context}
 
 Facts (from article text, may be partial):
 {facts_block}
@@ -711,7 +738,43 @@ Please read the full article from the URL and provide only the title and summary
             try:
                 source_text = read_article_content(article_url)
                 facts = _extract_numeric_facts(source_text)
-                if not _numbers_consistent(summary, facts):
+                
+                # Check for product hallucination
+                source_lower = source_text.lower()
+                summary_lower = summary.lower()
+                
+                # Products that should NOT be in summary if not in source
+                forbidden_products = ['y28', 'rm999']
+                hallucinated_products = []
+                
+                for product in forbidden_products:
+                    if product in summary_lower and product not in source_lower:
+                        hallucinated_products.append(product)
+                
+                if hallucinated_products:
+                    print(f"  ❌ PRODUCT HALLUCINATION DETECTED: Summary mentions {hallucinated_products} but source doesn't!")
+                    print("  🔄 Regenerating with stricter product constraints...")
+                    
+                    # Extract actual products from source
+                    actual_products = []
+                    if 'iqoo' in source_lower:
+                        actual_products.append('iQOO')
+                    if 'x300' in source_lower:
+                        actual_products.append('X300')
+                    if 'originos' in source_lower:
+                        actual_products.append('OriginOS')
+                    
+                    regen_prompt = f"""You summarized this article but added products not mentioned in the source. 
+
+ONLY mention these products that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
+
+Do NOT mention: Y28, RM999, or any products not explicitly mentioned in the source.
+
+Now output again in the same format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+"""
+                elif not _numbers_consistent(summary, facts):
                     print("  ⚠️  Numeric inconsistency detected. Regenerating with extracted facts context.")
                     facts_text = "\n".join(sorted(facts.get("prices", set())))
                     regen_prompt = f"""You summarized this article, but the numeric facts must be exact. Here are numeric facts extracted from the article; ONLY use numbers from this list. If none are relevant, omit numbers.
@@ -723,6 +786,10 @@ Now output again in the same format:
 标题: 【分类】中文标题
 摘要: 中文摘要
 """
+                else:
+                    regen_prompt = None
+                
+                if regen_prompt:
                     headers = {
                         'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
                         'Content-Type': 'application/json'
@@ -917,7 +984,43 @@ Please provide only the title and summary without any additional commentary."""
             # Numeric consistency check using provided article_content
             try:
                 facts = _extract_numeric_facts(article_content)
-                if not _numbers_consistent(summary, facts):
+                
+                # Check for product hallucination
+                content_lower = article_content.lower()
+                summary_lower = summary.lower()
+                
+                # Products that should NOT be in summary if not in source
+                forbidden_products = ['y28', 'rm999']
+                hallucinated_products = []
+                
+                for product in forbidden_products:
+                    if product in summary_lower and product not in content_lower:
+                        hallucinated_products.append(product)
+                
+                if hallucinated_products:
+                    print(f"  ❌ PRODUCT HALLUCINATION DETECTED (content): Summary mentions {hallucinated_products} but source doesn't!")
+                    print("  🔄 Regenerating with stricter product constraints...")
+                    
+                    # Extract actual products from source
+                    actual_products = []
+                    if 'iqoo' in content_lower:
+                        actual_products.append('iQOO')
+                    if 'x300' in content_lower:
+                        actual_products.append('X300')
+                    if 'originos' in content_lower:
+                        actual_products.append('OriginOS')
+                    
+                    regen_prompt = f"""You summarized this article but added products not mentioned in the source. 
+
+ONLY mention these products that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
+
+Do NOT mention: Y28, RM999, or any products not explicitly mentioned in the source.
+
+Now output again in the same format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+"""
+                elif not _numbers_consistent(summary, facts):
                     print("  ⚠️  Numeric inconsistency detected (content). Regenerating with facts.")
                     facts_text = "\n".join(sorted(facts.get("prices", set())))
                     regen_prompt = f"""You summarized this article, but numeric facts must be exact. ONLY use numbers from the facts list; if not present, omit numbers.
@@ -929,6 +1032,10 @@ Now output again in the same format:
 标题: 【分类】中文标题
 摘要: 中文摘要
 """
+                else:
+                    regen_prompt = None
+                
+                if regen_prompt:
                     headers = {
                         'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
                         'Content-Type': 'application/json'
