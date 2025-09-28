@@ -590,22 +590,58 @@ def deepseek_summarize_from_url(title, article_url):
         facts_list = sorted(list(facts.get('raw_tokens', set())))
         facts_block = "\n".join(facts_list[:40])  # cap to reasonable length
         
-        # Extract key product names and brands from source
+        # Extract key product names and brands from source using comprehensive pattern matching
         source_lower = source_text_for_facts.lower()
         mentioned_products = []
         mentioned_brands = []
         
-        # Look for specific product mentions
-        if 'iqoo' in source_lower:
-            mentioned_products.append('iQOO')
-        if 'x300' in source_lower:
-            mentioned_products.append('X300')
-        if 'y28' in source_lower:
-            mentioned_products.append('Y28')
-        if 'vivo' in source_lower:
-            mentioned_brands.append('vivo')
-        if 'originos' in source_lower:
-            mentioned_products.append('OriginOS')
+        # Comprehensive brand and product detection patterns
+        brand_patterns = {
+            'xiaomi': ['xiaomi', 'mi ', 'redmi', 'poco'],
+            'samsung': ['samsung', 'galaxy'],
+            'apple': ['apple', 'iphone', 'ipad', 'mac'],
+            'vivo': ['vivo', 'iqoo'],
+            'oppo': ['oppo', 'oneplus'],
+            'huawei': ['huawei', 'honor'],
+            'realme': ['realme'],
+            'google': ['google', 'pixel'],
+            'sony': ['sony', 'xperia'],
+            'lg': ['lg'],
+            'motorola': ['motorola', 'moto']
+        }
+        
+        product_patterns = {
+            'phones': ['phone', 'smartphone', 'mobile', 'device'],
+            'tablets': ['tablet', 'pad'],
+            'watches': ['watch', 'smartwatch'],
+            'laptops': ['laptop', 'notebook', 'ultrabook'],
+            'headphones': ['headphone', 'earbud', 'earphone', 'airpods'],
+            'cameras': ['camera', 'dslr', 'mirrorless']
+        }
+        
+        # Detect mentioned brands
+        for brand, patterns in brand_patterns.items():
+            if any(pattern in source_lower for pattern in patterns):
+                mentioned_brands.append(brand.title())
+        
+        # Detect mentioned product types
+        for product_type, patterns in product_patterns.items():
+            if any(pattern in source_lower for pattern in patterns):
+                mentioned_products.append(product_type)
+        
+        # Look for specific model numbers and names
+        import re
+        model_patterns = [
+            r'\b[a-z]+\s*\d{2,4}[a-z]*\b',  # Like "X300", "Y28", "15T", "Galaxy S24"
+            r'\b[a-z]+\s*[a-z]+\s*\d+[a-z]*\b',  # Like "iPhone 15", "Redmi Note 12"
+            r'\b[a-z]+\s*[a-z]+\b'  # Like "OriginOS", "HyperOS"
+        ]
+        
+        for pattern in model_patterns:
+            matches = re.findall(pattern, source_lower)
+            for match in matches:
+                if len(match) > 3:  # Filter out very short matches
+                    mentioned_products.append(match.title())
         
         products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
         brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
@@ -739,36 +775,69 @@ Please read the full article from the URL and provide only the title and summary
                 source_text = read_article_content(article_url)
                 facts = _extract_numeric_facts(source_text)
                 
-                # Check for product hallucination
+                # Check for product hallucination using comprehensive detection
                 source_lower = source_text.lower()
                 summary_lower = summary.lower()
                 
-                # Products that should NOT be in summary if not in source
-                forbidden_products = ['y28', 'rm999']
+                # Extract all products/brands mentioned in source
+                source_mentioned = set()
+                
+                # Add detected brands and products from source
+                for brand in ['xiaomi', 'samsung', 'apple', 'vivo', 'oppo', 'huawei', 'realme', 'google', 'sony', 'lg', 'motorola']:
+                    if brand in source_lower:
+                        source_mentioned.add(brand)
+                
+                # Add common product terms if mentioned in source
+                for term in ['phone', 'smartphone', 'tablet', 'watch', 'laptop', 'camera', 'headphone']:
+                    if term in source_lower:
+                        source_mentioned.add(term)
+                
+                # Add model numbers/names from source using regex
+                import re
+                model_matches = re.findall(r'\b[a-z]+\s*\d{2,4}[a-z]*\b|\b[a-z]+\s*[a-z]+\s*\d+[a-z]*\b', source_lower)
+                for match in model_matches:
+                    if len(match) > 3:
+                        source_mentioned.add(match.lower())
+                
+                # Check for hallucinated content in summary
                 hallucinated_products = []
                 
-                for product in forbidden_products:
-                    if product in summary_lower and product not in source_lower:
-                        hallucinated_products.append(product)
+                # Common hallucination patterns to check
+                hallucination_patterns = [
+                    r'\brm\s*\d{3,4}\b',  # RM999, RM1299, etc.
+                    r'\b\$\s*\d{3,4}\b',  # $999, $1299, etc.
+                    r'\busd\s*\d{3,4}\b',  # USD999, etc.
+                    r'\by\d{2}\b',  # Y28, Y30, etc.
+                    r'\bx\d{2,3}\b',  # X28, X300, etc.
+                ]
+                
+                for pattern in hallucination_patterns:
+                    matches = re.findall(pattern, summary_lower)
+                    for match in matches:
+                        if match not in source_lower:
+                            hallucinated_products.append(match)
+                
+                # Check for brand/product mentions in summary not in source
+                summary_brands = []
+                for brand in ['xiaomi', 'samsung', 'apple', 'vivo', 'oppo', 'huawei', 'realme', 'google', 'sony', 'lg', 'motorola']:
+                    if brand in summary_lower and brand not in source_lower:
+                        summary_brands.append(brand)
+                
+                if summary_brands:
+                    hallucinated_products.extend(summary_brands)
                 
                 if hallucinated_products:
                     print(f"  ❌ PRODUCT HALLUCINATION DETECTED: Summary mentions {hallucinated_products} but source doesn't!")
                     print("  🔄 Regenerating with stricter product constraints...")
                     
                     # Extract actual products from source
-                    actual_products = []
-                    if 'iqoo' in source_lower:
-                        actual_products.append('iQOO')
-                    if 'x300' in source_lower:
-                        actual_products.append('X300')
-                    if 'originos' in source_lower:
-                        actual_products.append('OriginOS')
+                    actual_products = list(source_mentioned)
                     
-                    regen_prompt = f"""You summarized this article but added products not mentioned in the source. 
+                    regen_prompt = f"""You summarized this article but added products/numbers not mentioned in the source. 
 
-ONLY mention these products that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
+ONLY mention these items that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
 
-Do NOT mention: Y28, RM999, or any products not explicitly mentioned in the source.
+Do NOT mention any products, prices, or model numbers that are not explicitly mentioned in the source article.
 
 Now output again in the same format:
 标题: 【分类】中文标题
@@ -985,36 +1054,69 @@ Please provide only the title and summary without any additional commentary."""
             try:
                 facts = _extract_numeric_facts(article_content)
                 
-                # Check for product hallucination
+                # Check for product hallucination using comprehensive detection
                 content_lower = article_content.lower()
                 summary_lower = summary.lower()
                 
-                # Products that should NOT be in summary if not in source
-                forbidden_products = ['y28', 'rm999']
+                # Extract all products/brands mentioned in source
+                source_mentioned = set()
+                
+                # Add detected brands and products from source
+                for brand in ['xiaomi', 'samsung', 'apple', 'vivo', 'oppo', 'huawei', 'realme', 'google', 'sony', 'lg', 'motorola']:
+                    if brand in content_lower:
+                        source_mentioned.add(brand)
+                
+                # Add common product terms if mentioned in source
+                for term in ['phone', 'smartphone', 'tablet', 'watch', 'laptop', 'camera', 'headphone']:
+                    if term in content_lower:
+                        source_mentioned.add(term)
+                
+                # Add model numbers/names from source using regex
+                import re
+                model_matches = re.findall(r'\b[a-z]+\s*\d{2,4}[a-z]*\b|\b[a-z]+\s*[a-z]+\s*\d+[a-z]*\b', content_lower)
+                for match in model_matches:
+                    if len(match) > 3:
+                        source_mentioned.add(match.lower())
+                
+                # Check for hallucinated content in summary
                 hallucinated_products = []
                 
-                for product in forbidden_products:
-                    if product in summary_lower and product not in content_lower:
-                        hallucinated_products.append(product)
+                # Common hallucination patterns to check
+                hallucination_patterns = [
+                    r'\brm\s*\d{3,4}\b',  # RM999, RM1299, etc.
+                    r'\b\$\s*\d{3,4}\b',  # $999, $1299, etc.
+                    r'\busd\s*\d{3,4}\b',  # USD999, etc.
+                    r'\by\d{2}\b',  # Y28, Y30, etc.
+                    r'\bx\d{2,3}\b',  # X28, X300, etc.
+                ]
+                
+                for pattern in hallucination_patterns:
+                    matches = re.findall(pattern, summary_lower)
+                    for match in matches:
+                        if match not in content_lower:
+                            hallucinated_products.append(match)
+                
+                # Check for brand/product mentions in summary not in source
+                summary_brands = []
+                for brand in ['xiaomi', 'samsung', 'apple', 'vivo', 'oppo', 'huawei', 'realme', 'google', 'sony', 'lg', 'motorola']:
+                    if brand in summary_lower and brand not in content_lower:
+                        summary_brands.append(brand)
+                
+                if summary_brands:
+                    hallucinated_products.extend(summary_brands)
                 
                 if hallucinated_products:
                     print(f"  ❌ PRODUCT HALLUCINATION DETECTED (content): Summary mentions {hallucinated_products} but source doesn't!")
                     print("  🔄 Regenerating with stricter product constraints...")
                     
                     # Extract actual products from source
-                    actual_products = []
-                    if 'iqoo' in content_lower:
-                        actual_products.append('iQOO')
-                    if 'x300' in content_lower:
-                        actual_products.append('X300')
-                    if 'originos' in content_lower:
-                        actual_products.append('OriginOS')
+                    actual_products = list(source_mentioned)
                     
-                    regen_prompt = f"""You summarized this article but added products not mentioned in the source. 
+                    regen_prompt = f"""You summarized this article but added products/numbers not mentioned in the source. 
 
-ONLY mention these products that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
+ONLY mention these items that are actually in the source: {', '.join(actual_products) if actual_products else 'None specifically mentioned'}
 
-Do NOT mention: Y28, RM999, or any products not explicitly mentioned in the source.
+Do NOT mention any products, prices, or model numbers that are not explicitly mentioned in the source article.
 
 Now output again in the same format:
 标题: 【分类】中文标题
