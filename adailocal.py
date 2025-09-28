@@ -40,6 +40,12 @@ except Exception:
 BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
+    # Google News feeds (high priority, comprehensive coverage)
+    "https://news.google.com/rss?hl=en&gl=MY&ceid=MY:en", # Malaysia English news
+    "https://news.google.com/rss/search?q=technology+malaysia&hl=en&gl=MY&ceid=MY:en", # Technology news Malaysia
+    "https://news.google.com/rss/search?q=gaming+malaysia&hl=en&gl=MY&ceid=MY:en", # Gaming news Malaysia
+    "https://news.google.com/rss/search?q=mobile+phone+malaysia&hl=en&gl=MY&ceid=MY:en", # Mobile phone news Malaysia
+    
     # Primary tech-focused feeds (most reliable)
     "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
     "https://rss.app/feeds/r5wzRVVTbqYIyfSE.xml", #ZingGadget MY Fb
@@ -72,7 +78,9 @@ RSS_FEEDS = [
 
 # Feeds with highest priority (processed first when present)
 PRIORITY_FEEDS = {
-    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml",
+    "https://news.google.com/rss?hl=en&gl=MY&ceid=MY:en", # Malaysia English news
+    "https://news.google.com/rss/search?q=technology+malaysia&hl=en&gl=MY&ceid=MY:en", # Technology news Malaysia
+    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
 }
 
 # All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
@@ -274,6 +282,12 @@ def _format_source_name(source):
     source = source.replace(" - All", "").replace(" - Latest News", "").replace(" RSS", "")
     source = source.replace("Online", "").replace("Latest", "").replace("News", "")
     source = source.replace("  ", " ").strip()
+    
+    # Handle Google News specific formatting
+    if "Google News" in source:
+        return "Google News"
+    if "news.google.com" in source:
+        return "Google News"
 
     # Do not append any suffix; show the original media name only
     return source
