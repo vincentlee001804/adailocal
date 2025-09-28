@@ -371,6 +371,14 @@ def read_article_content(url):
         # Debug: show first 200 characters
         if content:
             print(f"  📄 Content preview: {content[:200]}...")
+            # Additional debug: check for key terms to verify we got the right article
+            content_lower = content.lower()
+            if 'forza' in content_lower:
+                print(f"  🎮 Forza content detected - this appears to be gaming content")
+            elif 'xiaomi' in content_lower or 'rm999' in content_lower:
+                print(f"  ⚠️  Xiaomi/RM999 content detected - this may be wrong article!")
+            else:
+                print(f"  📝 Content type unclear from preview")
         
         return content
         
@@ -1340,9 +1348,31 @@ def main():
                     # Try direct URL approach first (let DeepSeek read the article)
                     try:
                         print(f"  🌐 Letting DeepSeek read article directly from URL")
+                        print(f"  🔗 URL being processed: {it['url']}")
+                        print(f"  📰 Original title: {it['title']}")
                         chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
                         print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
                         print(f"  🤖 DeepSeek direct URL summary length: {len(summary)} characters")
+                        print(f"  📄 Summary preview: {summary[:150]}...")
+                        
+                        # Validation: Check if summary content matches the URL
+                        url_lower = it['url'].lower()
+                        summary_lower = summary.lower()
+                        title_lower = it['title'].lower()
+                        
+                        # Check for content mismatch
+                        if 'forza' in url_lower and ('xiaomi' in summary_lower or 'rm999' in summary_lower):
+                            print(f"  ❌ CONTENT MISMATCH: URL is about Forza but summary mentions Xiaomi/RM999!")
+                            print(f"  🔄 Attempting to regenerate with stricter constraints...")
+                            # Try to regenerate with more specific instructions
+                            try:
+                                chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
+                                print(f"  🔁 Regenerated summary: {summary[:150]}...")
+                            except Exception as regen_e:
+                                print(f"  ❌ Regeneration failed: {regen_e}")
+                        elif 'xiaomi' in url_lower and 'forza' in summary_lower:
+                            print(f"  ❌ CONTENT MISMATCH: URL is about Xiaomi but summary mentions Forza!")
+                        
                         # Use the Chinese title from DeepSeek
                         it["title"] = chinese_title
                     except Exception as e:
