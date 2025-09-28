@@ -248,22 +248,42 @@ def _gen_webhook_sign(secret, timestamp):
 	digest = hmac.new(secret.encode("utf-8"), string_to_sign, digestmod=_hashlib.sha256).digest()
 	return base64.b64encode(digest).decode("utf-8")
 
+def test_webhook_connectivity(webhook_urls, secret=None):
+    """Test webhook connectivity with a simple test message"""
+    print("🧪 Testing webhook connectivity...")
+    
+    test_title = "🔧 Webhook Test"
+    test_content = "This is a test message to verify webhook connectivity. If you see this, your webhook is working correctly!"
+    
+    return send_to_multiple_webhooks(webhook_urls, test_title, test_content, secret)
+
 def send_to_multiple_webhooks(webhook_urls, title, content, secret=None):
     """Send the same message to multiple webhook URLs"""
     success_count = 0
     total_count = len(webhook_urls)
     
+    print(f"🚀 Starting to send to {total_count} webhook(s)...")
+    
     for i, webhook_url in enumerate(webhook_urls, 1):
         try:
             print(f"📤 Sending to webhook {i}/{total_count}: {webhook_url[:50]}...")
+            print(f"  🔗 Full URL: {webhook_url}")
+            print(f"  📝 Title: {title[:50]}...")
+            print(f"  🔐 Secret: {'Set' if secret else 'Not set'}")
+            
             send_card_via_webhook(webhook_url, title, content, secret)
             success_count += 1
             print(f"✅ Webhook {i} sent successfully")
         except Exception as webhook_error:
             print(f"❌ Webhook {i} failed: {webhook_error}")
+            print(f"  🔍 Error details: {type(webhook_error).__name__}: {str(webhook_error)}")
             continue
     
     print(f"📊 Summary: {success_count}/{total_count} webhooks sent successfully")
+    if success_count == 0:
+        print("❌ All webhooks failed! Check your URLs and secrets.")
+    elif success_count < total_count:
+        print(f"⚠️  Some webhooks failed ({total_count - success_count} failed)")
     return success_count > 0
 
 def send_card_via_webhook(webhook_url, title, content, secret=None):
@@ -1337,6 +1357,20 @@ def main():
     print(f"  Total webhook URLs configured: {len(webhook_urls)}")
     for i, url in enumerate(webhook_urls, 1):
         print(f"    Webhook {i}: {url[:50]}...")
+    
+    # Additional debugging for webhook URLs
+    if len(webhook_urls) == 0:
+        print("❌ No webhook URLs configured! Check your environment variables.")
+    elif len(webhook_urls) == 1:
+        print("⚠️  Only 1 webhook URL configured. Add FEISHU_WEBHOOK_URL_2 for multiple groups.")
+    else:
+        print(f"✅ Multiple webhook URLs configured: {len(webhook_urls)} groups will receive news")
+    
+    # Test webhook connectivity if requested
+    if os.environ.get("TEST_WEBHOOKS", "0") == "1" and len(webhook_urls) > 0:
+        print("🧪 Running webhook connectivity test...")
+        test_webhook_connectivity(webhook_urls, webhook_secret)
+        print("🧪 Webhook test completed.")
     
     # Test mode - don't actually send if webhook URL is placeholder
     TEST_MODE = len(webhook_urls) == 0 or any(url == "your_webhook_url_here" for url in webhook_urls)
