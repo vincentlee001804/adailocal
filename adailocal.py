@@ -40,11 +40,17 @@ except Exception:
 BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
-    # Google News feeds (high priority, comprehensive coverage)
-    "https://news.google.com/rss?hl=en&gl=MY&ceid=MY:en", # Malaysia English news
-    "https://news.google.com/rss/search?q=technology+malaysia&hl=en&gl=MY&ceid=MY:en", # Technology news Malaysia
-    "https://news.google.com/rss/search?q=gaming+malaysia&hl=en&gl=MY&ceid=MY:en", # Gaming news Malaysia
-    "https://news.google.com/rss/search?q=mobile+phone+malaysia&hl=en&gl=MY&ceid=MY:en", # Mobile phone news Malaysia
+    # Google News feeds - Xiaomi and competitors focus
+    "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia
+    "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia
+    "https://news.google.com/rss/search?q=samsung+malaysia&hl=en&gl=MY&ceid=MY:en", # Samsung Malaysia
+    "https://news.google.com/rss/search?q=apple+iphone+malaysia&hl=en&gl=MY&ceid=MY:en", # Apple iPhone Malaysia
+    "https://news.google.com/rss/search?q=oneplus+malaysia&hl=en&gl=MY&ceid=MY:en", # OnePlus Malaysia
+    "https://news.google.com/rss/search?q=huawei+malaysia&hl=en&gl=MY&ceid=MY:en", # Huawei Malaysia
+    "https://news.google.com/rss/search?q=oppo+malaysia&hl=en&gl=MY&ceid=MY:en", # OPPO Malaysia
+    "https://news.google.com/rss/search?q=vivo+malaysia&hl=en&gl=MY&ceid=MY:en", # Vivo Malaysia
+    "https://news.google.com/rss/search?q=realme+malaysia&hl=en&gl=MY&ceid=MY:en", # Realme Malaysia
+    "https://news.google.com/rss/search?q=smartphone+launch+malaysia&hl=en&gl=MY&ceid=MY:en", # Smartphone launches Malaysia
     
     # Primary tech-focused feeds (most reliable)
     "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
@@ -78,8 +84,8 @@ RSS_FEEDS = [
 
 # Feeds with highest priority (processed first when present)
 PRIORITY_FEEDS = {
-    "https://news.google.com/rss?hl=en&gl=MY&ceid=MY:en", # Malaysia English news
-    "https://news.google.com/rss/search?q=technology+malaysia&hl=en&gl=MY&ceid=MY:en", # Technology news Malaysia
+    "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia
+    "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia
     "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
 }
 
@@ -387,10 +393,16 @@ def read_article_content(url):
             print(f"  📄 Content preview: {content[:200]}...")
             # Additional debug: check for key terms to verify we got the right article
             content_lower = content.lower()
-            if 'forza' in content_lower:
-                print(f"  🎮 Forza content detected - this appears to be gaming content")
-            elif 'xiaomi' in content_lower or 'rm999' in content_lower:
-                print(f"  ⚠️  Xiaomi/RM999 content detected - this may be wrong article!")
+            if 'xiaomi' in content_lower or 'redmi' in content_lower:
+                print(f"  📱 Xiaomi/Redmi content detected - this appears to be mobile tech content")
+            elif 'samsung' in content_lower or 'galaxy' in content_lower:
+                print(f"  📱 Samsung content detected - competitor news")
+            elif 'apple' in content_lower or 'iphone' in content_lower:
+                print(f"  📱 Apple/iPhone content detected - competitor news")
+            elif 'oneplus' in content_lower or 'oppo' in content_lower or 'vivo' in content_lower:
+                print(f"  📱 Chinese brand content detected - competitor news")
+            elif 'forza' in content_lower:
+                print(f"  🎮 Forza content detected - this appears to be gaming content (may be off-topic)")
             else:
                 print(f"  📝 Content type unclear from preview")
         
@@ -1374,18 +1386,27 @@ def main():
                         summary_lower = summary.lower()
                         title_lower = it['title'].lower()
                         
-                        # Check for content mismatch
-                        if 'forza' in url_lower and ('xiaomi' in summary_lower or 'rm999' in summary_lower):
-                            print(f"  ❌ CONTENT MISMATCH: URL is about Forza but summary mentions Xiaomi/RM999!")
+                        # Check for content mismatch - focus on mobile tech brands
+                        mobile_brands = ['xiaomi', 'redmi', 'samsung', 'apple', 'iphone', 'oneplus', 'oppo', 'vivo', 'huawei', 'realme']
+                        gaming_terms = ['forza', 'gaming', 'playstation', 'xbox', 'nintendo']
+                        
+                        url_has_mobile = any(brand in url_lower for brand in mobile_brands)
+                        summary_has_mobile = any(brand in summary_lower for brand in mobile_brands)
+                        url_has_gaming = any(term in url_lower for term in gaming_terms)
+                        summary_has_gaming = any(term in summary_lower for term in gaming_terms)
+                        
+                        if url_has_mobile and summary_has_gaming:
+                            print(f"  ❌ CONTENT MISMATCH: URL is about mobile tech but summary mentions gaming!")
                             print(f"  🔄 Attempting to regenerate with stricter constraints...")
-                            # Try to regenerate with more specific instructions
                             try:
                                 chinese_title, summary = deepseek_summarize_from_url(it["title"], it['url'])
                                 print(f"  🔁 Regenerated summary: {summary[:150]}...")
                             except Exception as regen_e:
                                 print(f"  ❌ Regeneration failed: {regen_e}")
-                        elif 'xiaomi' in url_lower and 'forza' in summary_lower:
-                            print(f"  ❌ CONTENT MISMATCH: URL is about Xiaomi but summary mentions Forza!")
+                        elif url_has_gaming and summary_has_mobile:
+                            print(f"  ❌ CONTENT MISMATCH: URL is about gaming but summary mentions mobile tech!")
+                        elif url_has_mobile and not summary_has_mobile:
+                            print(f"  ⚠️  URL mentions mobile brands but summary doesn't - may need regeneration")
                         
                         # Use the Chinese title from DeepSeek
                         it["title"] = chinese_title
