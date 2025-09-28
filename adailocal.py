@@ -248,6 +248,24 @@ def _gen_webhook_sign(secret, timestamp):
 	digest = hmac.new(secret.encode("utf-8"), string_to_sign, digestmod=_hashlib.sha256).digest()
 	return base64.b64encode(digest).decode("utf-8")
 
+def send_to_multiple_webhooks(webhook_urls, title, content, secret=None):
+    """Send the same message to multiple webhook URLs"""
+    success_count = 0
+    total_count = len(webhook_urls)
+    
+    for i, webhook_url in enumerate(webhook_urls, 1):
+        try:
+            print(f"📤 Sending to webhook {i}/{total_count}: {webhook_url[:50]}...")
+            send_card_via_webhook(webhook_url, title, content, secret)
+            success_count += 1
+            print(f"✅ Webhook {i} sent successfully")
+        except Exception as webhook_error:
+            print(f"❌ Webhook {i} failed: {webhook_error}")
+            continue
+    
+    print(f"📊 Summary: {success_count}/{total_count} webhooks sent successfully")
+    return success_count > 0
+
 def send_card_via_webhook(webhook_url, title, content, secret=None):
 	# Always send interactive card so markdown links are clickable
 	card = _build_card(title, content)
@@ -1291,24 +1309,43 @@ def collect_once():
     return items
 
 def main():
-    webhook_url = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
+    # Support multiple webhook URLs
+    webhook_urls = []
     webhook_secret = os.environ.get("FEISHU_WEBHOOK_SECRET", "").strip()
+    
+    # Primary webhook URL
+    primary_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
+    if primary_webhook:
+        webhook_urls.append(primary_webhook)
+    
+    # Secondary webhook URL
+    secondary_webhook = os.environ.get("FEISHU_WEBHOOK_URL_2", "").strip()
+    if secondary_webhook:
+        webhook_urls.append(secondary_webhook)
+    
+    # Tertiary webhook URL (if needed)
+    tertiary_webhook = os.environ.get("FEISHU_WEBHOOK_URL_3", "").strip()
+    if tertiary_webhook:
+        webhook_urls.append(tertiary_webhook)
     
     # Debug environment variables
     print(f"🔧 Environment check:")
-    print(f"  FEISHU_WEBHOOK_URL: {'Set' if webhook_url else 'Not set'}")
+    print(f"  FEISHU_WEBHOOK_URL: {'Set' if primary_webhook else 'Not set'}")
+    print(f"  FEISHU_WEBHOOK_URL_2: {'Set' if secondary_webhook else 'Not set'}")
+    print(f"  FEISHU_WEBHOOK_URL_3: {'Set' if tertiary_webhook else 'Not set'}")
     print(f"  FEISHU_WEBHOOK_SECRET: {'Set' if webhook_secret else 'Not set (optional)'}")
-    if webhook_url:
-        print(f"  Webhook URL: {webhook_url[:50]}...")
+    print(f"  Total webhook URLs configured: {len(webhook_urls)}")
+    for i, url in enumerate(webhook_urls, 1):
+        print(f"    Webhook {i}: {url[:50]}...")
     
     # Test mode - don't actually send if webhook URL is placeholder
-    TEST_MODE = webhook_url == "your_webhook_url_here" or not webhook_url
+    TEST_MODE = len(webhook_urls) == 0 or any(url == "your_webhook_url_here" for url in webhook_urls)
     if TEST_MODE:
         print("=== RUNNING IN TEST MODE (no actual sending) ===")
 
     USE_APP_API = os.environ.get("USE_APP_API", "0") == "1"
 
-    if not webhook_url or USE_APP_API:
+    if len(webhook_urls) == 0 or USE_APP_API:
         app_id = os.environ.get("FEISHU_APP_ID", "")
         app_secret = os.environ.get("FEISHU_APP_SECRET", "")
         chat_id = os.environ.get("FEISHU_CHAT_ID", "")
@@ -1488,16 +1525,11 @@ def main():
                     print(f"WOULD SEND: {title}")
                     print(f"CONTENT: {content[:100]}...")
                 else:
-                    if webhook_url and not USE_APP_API:
-                        print(f"📤 Sending via webhook: {webhook_url[:50]}...")
-                        print(f"  📝 Title: {title}")
-                        print(f"  📄 Content preview: {content[:200]}...")
-                        # Only pass secret if it's actually set
-                        if webhook_secret:
-                            send_card_via_webhook(webhook_url, title, content, secret=webhook_secret)
-                        else:
-                            send_card_via_webhook(webhook_url, title, content)
-                        print(f"✅ Webhook sent successfully")
+                    if len(webhook_urls) > 0 and not USE_APP_API:
+                        # Send to all configured webhook URLs
+                        print(f"📝 Title: {title}")
+                        print(f"📄 Content preview: {content[:200]}...")
+                        send_to_multiple_webhooks(webhook_urls, title, content, webhook_secret)
                     else:
                         print(f"📤 Sending via API (token method)")
                         token = get_tenant_access_token(app_id, app_secret)
