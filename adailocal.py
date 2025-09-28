@@ -332,6 +332,24 @@ def _format_source_name(source):
         return "Google News"
     if "news.google.com" in source:
         return "Google News"
+    
+    # Handle Google search result feeds that show "search term - Google"
+    if " - Google" in source:
+        # Extract the search term and use it as source
+        search_term = source.replace(" - Google", "").strip()
+        return search_term
+    
+    # Handle specific known sources
+    if "lowyat" in source.lower():
+        return "Lowyat.NET"
+    if "soyacincau" in source.lower():
+        return "SoyaCincau"
+    if "amanz" in source.lower():
+        return "Amanz"
+    if "malaysiakini" in source.lower():
+        return "Malaysiakini"
+    if "astroawani" in source.lower():
+        return "Astro Awani"
 
     # Do not append any suffix; show the original media name only
     return source
@@ -653,6 +671,7 @@ def deepseek_summarize_from_url(title, article_url):
 
 Requirements:
 - **Title MUST be in Mandarin Chinese** (not English)
+- **Summary MUST be in Mandarin Chinese** (not English)
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
@@ -662,6 +681,7 @@ Requirements:
 - **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
+- **CRITICAL: Write the summary in Mandarin Chinese, not English**
 - Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
 - If multiple prices are mentioned, pick the main product's price as stated.
 - Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
@@ -937,6 +957,7 @@ def deepseek_summarize_content(title, article_content):
 
 Requirements:
 - **Title MUST be in Mandarin Chinese** (not English)
+- **Summary MUST be in Mandarin Chinese** (not English)
 - Title should be concise and capture the main point
 - Add appropriate category tag in front of title using format 【分类】
 - Category options: 科技、娱乐、经济、体育、灾难、综合
@@ -946,6 +967,7 @@ Requirements:
 - **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
 - Summary should be informative with key facts and details
 - Include important numbers, dates, and names
+- **CRITICAL: Write the summary in Mandarin Chinese, not English**
 - Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
 - If multiple prices are mentioned, pick the main product's price as stated.
 - Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
