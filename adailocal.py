@@ -328,6 +328,11 @@ def _extract_source_from_url(url):
         if domain.startswith('www.'):
             domain = domain[4:]
         
+        # Handle CMS subdomains (cms.domain.com -> domain.com)
+        if domain.startswith('cms.'):
+            print(f"  🔧 Removing CMS subdomain: {domain} -> {domain[4:]}")
+            domain = domain[4:]  # Remove 'cms.' prefix
+        
         # Map domains to friendly names
         domain_mapping = {
             'lowyat.net': 'Lowyat.NET',
