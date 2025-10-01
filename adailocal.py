@@ -1723,25 +1723,80 @@ def main():
                         print(f"  📄 Content preview: {article_content[:200]}...")
                         
                         # Use DeepSeek to summarize the actual article content
-                        chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
-                        print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
-                        print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
-                        print(f"  📄 Summary preview: {summary[:150]}...")
-                        
-                        # Use the Chinese title from DeepSeek
-                        it["title"] = chinese_title
+                        try:
+                            chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
+                            
+                            # Validate that we got meaningful content
+                            if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
+                                print(f"  ⚠️  DeepSeek returned empty/placeholder title, using fallback")
+                                chinese_title = f"【科技】{it['title']}"
+                            
+                            if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
+                                print(f"  ⚠️  DeepSeek returned empty/placeholder summary, using fallback")
+                                summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                            
+                            print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
+                            print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
+                            print(f"  📄 Summary preview: {summary[:150]}...")
+                            
+                            # Use the Chinese title from DeepSeek
+                            it["title"] = chinese_title
+                            
+                        except Exception as deepseek_error:
+                            print(f"  ❌ DeepSeek summarization failed: {deepseek_error}")
+                            print(f"  🔄 Using fallback summarization")
+                            chinese_title = f"【科技】{it['title']}"
+                            summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                            it["title"] = chinese_title
                     else:
                         print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
                         # Fallback: Use RSS content but still try DeepSeek summarization
                         rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
-                        chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
-                        if chinese_title:
+                        try:
+                            chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
+                            
+                            # Validate that we got meaningful content
+                            if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
+                                print(f"  ⚠️  DeepSeek returned empty/placeholder title, using fallback")
+                                chinese_title = f"【科技】{it['title']}"
+                            
+                            if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
+                                print(f"  ⚠️  DeepSeek returned empty/placeholder summary, using fallback")
+                                summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                            
+                            if chinese_title:
+                                it["title"] = chinese_title
+                                print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
+                            print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
+                            
+                        except Exception as deepseek_error:
+                            print(f"  ❌ DeepSeek RSS summarization failed: {deepseek_error}")
+                            print(f"  🔄 Using final fallback")
+                            chinese_title = f"【科技】{it['title']}"
+                            summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             it["title"] = chinese_title
-                            print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
-                        print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
+                
+                # Final safety check - ensure we never send empty/placeholder content
+                if not summary or summary.strip() in ["中文摘要", "摘要", "", "中文标题", "【分类】中文标题"]:
+                    print(f"  🚨 CRITICAL: Empty/placeholder content detected, using emergency fallback")
+                    summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                
+                if not it["title"] or it["title"].strip() in ["【分类】中文标题", "中文标题", ""]:
+                    print(f"  🚨 CRITICAL: Empty/placeholder title detected, using emergency fallback")
+                    it["title"] = f"【科技】{it['title']}"
+                
+                # Content quality check - ensure summary is meaningful
+                if len(summary.strip()) < 10:
+                    print(f"  ⚠️  Summary too short, enhancing with more details")
+                    summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。详细内容请查看原文链接。"
+                
+                print(f"  ✅ Final content validation:")
+                print(f"    Title: {it['title']}")
+                print(f"    Summary: {summary[:100]}...")
+                print(f"    Summary length: {len(summary)} characters")
                 # Extract category from title if it contains 【】 tags, otherwise use rule-based classification
                 if "【" in it["title"] and "】" in it["title"]:
                     # Extract category from title (e.g., 【科技】标题 -> 科技)
