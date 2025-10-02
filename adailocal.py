@@ -783,6 +783,100 @@ def gemini_summarize_from_url(title, article_url):
         # Fallback to simple truncation
         return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
+def gemini_summarize_content(title, article_content):
+    """Use Google Gemini AI to summarize pre-extracted article content"""
+    if not GEMINI_AVAILABLE:
+        raise Exception("Gemini API not available")
+    
+    try:
+        print(f"  🤖 Gemini summarizing content: {title[:50]}...")
+        
+        # Extract facts for grounding
+        facts = _extract_numeric_facts(article_content)
+        facts_list = sorted(list(facts.get('raw_tokens', set())))
+        facts_block = "\n".join(facts_list[:40])
+        
+        # Create Gemini prompt
+        prompt = f"""请分析以下新闻文章并提供：
+
+1. **中文标题（带分类标签）** - 格式：【分类】中文标题
+2. **中文摘要** - 不超过50字，简洁明了
+
+要求：
+- 标题和摘要必须用中文
+- 分类选项：科技、娱乐、经济、体育、灾难、综合
+- 保持品牌名、产品名、地名、人名用英文
+- 只使用文章中明确提到的数字和事实
+- 不要添加文章中未提及的产品或信息
+- 保持专业、清晰的表达
+
+文章标题: {title}
+
+文章内容:
+{article_content}
+
+提取的事实: {facts_block}
+
+请按以下格式回复：
+标题: 【分类】中文标题
+摘要: 中文摘要"""
+
+        # Initialize Gemini model
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        print(f"  📤 Sending request to Gemini API...")
+        response = model.generate_content(prompt)
+        
+        if not response.text:
+            raise Exception("Empty response from Gemini")
+        
+        content = response.text.strip()
+        print(f"  📡 Gemini API response received: {len(content)} characters")
+        
+        # Parse the response to extract title and summary
+        try:
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:'):
+                    # If no title found yet, this might be the title
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:'):
+                    # If we have a title, this is part of the summary
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
+            
+            # If we couldn't parse properly, use the whole content as summary
+            if not chinese_title or not summary:
+                print(f"  ⚠️  Could not parse title/summary, using full content")
+                chinese_title = title  # Fallback to original title
+                summary = content
+            
+            print(f"  ✅ Gemini Chinese title: {chinese_title}")
+            print(f"  ✅ Gemini summary generated: {len(summary)} characters")
+
+            return chinese_title, summary
+            
+        except Exception as e:
+            print(f"  ⚠️  Error parsing response: {e}")
+            print(f"  📄 Raw content: {content[:200]}...")
+            # Fallback: return original title and full content as summary
+            return title, content
+        
+    except Exception as e:
+        print(f"  ❌ Gemini API error: {e}")
+        # Fallback to simple truncation
+        return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
+
 def _contains_kw(text_lc: str, keywords):
     import re
     for kw in keywords:
@@ -1201,55 +1295,55 @@ def main():
                         print(f"  📖 Article content extracted: {len(article_content)} characters")
                         print(f"  📄 Content preview: {article_content[:200]}...")
                         
-                        # Use DeepSeek to summarize the actual article content
+                        # Use Gemini to summarize the actual article content
                         try:
                             chinese_title, summary = gemini_summarize_content(it["title"], article_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
-                                print(f"  ⚠️  DeepSeek returned empty/placeholder title, using fallback")
+                                print(f"  ⚠️  Gemini returned empty/placeholder title, using fallback")
                                 chinese_title = f"【科技】{it['title']}"
                             
                             if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
-                                print(f"  ⚠️  DeepSeek returned empty/placeholder summary, using fallback")
+                                print(f"  ⚠️  Gemini returned empty/placeholder summary, using fallback")
                                 summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             
-                            print(f"  🤖 DeepSeek Chinese title: {chinese_title}")
-                            print(f"  🤖 DeepSeek summary length: {len(summary)} characters")
+                            print(f"  🤖 Gemini Chinese title: {chinese_title}")
+                            print(f"  🤖 Gemini summary length: {len(summary)} characters")
                             print(f"  📄 Summary preview: {summary[:150]}...")
                             
-                            # Use the Chinese title from DeepSeek
+                            # Use the Chinese title from Gemini
                             it["title"] = chinese_title
                             
-                        except Exception as deepseek_error:
-                            print(f"  ❌ DeepSeek summarization failed: {deepseek_error}")
+                        except Exception as gemini_error:
+                            print(f"  ❌ Gemini summarization failed: {gemini_error}")
                             print(f"  🔄 Using fallback summarization")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             it["title"] = chinese_title
                     else:
-                        print(f"  ⚠️  Content extraction failed, using RSS content with DeepSeek")
-                        # Fallback: Use RSS content but still try DeepSeek summarization
+                        print(f"  ⚠️  Content extraction failed, using RSS content with Gemini")
+                        # Fallback: Use RSS content but still try Gemini summarization
                         rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
                         try:
                             chinese_title, summary = gemini_summarize_content(it["title"], rss_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
-                                print(f"  ⚠️  DeepSeek returned empty/placeholder title, using fallback")
+                                print(f"  ⚠️  Gemini returned empty/placeholder title, using fallback")
                                 chinese_title = f"【科技】{it['title']}"
                             
                             if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
-                                print(f"  ⚠️  DeepSeek returned empty/placeholder summary, using fallback")
+                                print(f"  ⚠️  Gemini returned empty/placeholder summary, using fallback")
                                 summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             
                             if chinese_title:
                                 it["title"] = chinese_title
                                 print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
-                            print(f"  🤖 DeepSeek RSS summary length: {len(summary)} characters")
+                            print(f"  🤖 Gemini RSS summary length: {len(summary)} characters")
                             
-                        except Exception as deepseek_error:
-                            print(f"  ❌ DeepSeek RSS summarization failed: {deepseek_error}")
+                        except Exception as gemini_error:
+                            print(f"  ❌ Gemini RSS summarization failed: {gemini_error}")
                             print(f"  🔄 Using final fallback")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
