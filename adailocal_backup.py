@@ -25,20 +25,8 @@ except ImportError:
         pass  # .env file doesn't exist, use system environment variables
 
 # Google Gemini API Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAIvcZIoGWx5vByGgHVrCtc0hybk3RGCKc")
-
-# Import Gemini
-try:
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API_KEY)
-    GEMINI_AVAILABLE = True
-    print("✅ Google Gemini API configured successfully")
-except ImportError:
-    print("❌ Google Generative AI library not installed. Run: pip install google-generativeai")
-    GEMINI_AVAILABLE = False
-except Exception as e:
-    print(f"❌ Failed to configure Gemini API: {e}")
-    GEMINI_AVAILABLE = False
+GEMINI_API_KEY = "AIzaSyAIvcZIoGWx5vByGgHVrCtc0hybk3RGCKc"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
@@ -652,28 +640,22 @@ def upload_image_to_feishu(token, image_url):
 
 def gemini_summarize_from_url(title, article_url):
     """Use Google Gemini AI to read and summarize the article directly from URL"""
-    if not GEMINI_AVAILABLE:
-        raise Exception("Gemini API not available")
-    
     try:
         print(f"  🤖 Gemini reading and summarizing: {title[:50]}...")
         
-        # Read article content first
-        article_content = read_article_content(article_url)
-        if not article_content or len(article_content.strip()) < 50:
-            raise Exception("Failed to read article content or content too short")
-        
-        # Extract facts for grounding
-        facts = _extract_numeric_facts(article_content)
+        # Prepare the prompt for Gemini to read the article directly
+        # Include extracted numeric/spec facts to ground the model
+        source_text_for_facts = read_article_content(article_url)
+        facts = _extract_numeric_facts(source_text_for_facts)
         facts_list = sorted(list(facts.get('raw_tokens', set())))
-        facts_block = "\n".join(facts_list[:40])
+        facts_block = "\n".join(facts_list[:40])  # cap to reasonable length
         
-        # Extract mentioned products and brands
-        source_lower = article_content.lower()
+        # Extract key product names and brands from source using comprehensive pattern matching
+        source_lower = source_text_for_facts.lower()
         mentioned_products = []
         mentioned_brands = []
         
-        # Brand detection patterns
+        # Comprehensive brand and product detection patterns
         brand_patterns = {
             'xiaomi': ['xiaomi', 'mi ', 'redmi', 'poco'],
             'samsung': ['samsung', 'galaxy'],
@@ -688,99 +670,176 @@ def gemini_summarize_from_url(title, article_url):
             'motorola': ['motorola', 'moto']
         }
         
+        product_patterns = {
+            'phones': ['phone', 'smartphone', 'mobile', 'device'],
+            'tablets': ['tablet', 'pad'],
+            'watches': ['watch', 'smartwatch'],
+            'laptops': ['laptop', 'notebook', 'ultrabook'],
+            'headphones': ['headphone', 'earbud', 'earphone', 'airpods'],
+            'cameras': ['camera', 'dslr', 'mirrorless']
+        }
+        
         # Detect mentioned brands
         for brand, patterns in brand_patterns.items():
             if any(pattern in source_lower for pattern in patterns):
                 mentioned_brands.append(brand.title())
         
-        # Look for model numbers
+        # Detect mentioned product types
+        for product_type, patterns in product_patterns.items():
+            if any(pattern in source_lower for pattern in patterns):
+                mentioned_products.append(product_type)
+        
+        # Look for specific model numbers and names
         import re
         model_patterns = [
-            r'\b[a-z]+\s*\d{2,4}[a-z]*\b',  # Like "X300", "Y28", "15T"
+            r'\b[a-z]+\s*\d{2,4}[a-z]*\b',  # Like "X300", "Y28", "15T", "Galaxy S24"
             r'\b[a-z]+\s*[a-z]+\s*\d+[a-z]*\b',  # Like "iPhone 15", "Redmi Note 12"
+            r'\b[a-z]+\s*[a-z]+\b'  # Like "OriginOS", "HyperOS"
         ]
         
         for pattern in model_patterns:
             matches = re.findall(pattern, source_lower)
             for match in matches:
-                if len(match) > 3:
+                if len(match) > 3:  # Filter out very short matches
                     mentioned_products.append(match.title())
         
         products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
         brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
         
-        # Create Gemini prompt
-        prompt = f"""请阅读以下新闻文章并提供：
+        prompt = f"""Please read the following news article URL and provide:
 
-1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过50字，简洁明了
+1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
+2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
-要求：
-- 标题和摘要必须用中文
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
-- 保持品牌名、产品名、地名、人名用英文
-- 只使用文章中明确提到的数字和事实
-- 不要添加文章中未提及的产品或信息
-- 保持专业、清晰的表达
+Requirements:
+- **Title MUST be in Mandarin Chinese** (not English)
+- **Summary MUST be in Mandarin Chinese** (not English)
+- Title should be concise and capture the main point
+- Add appropriate category tag in front of title using format 【分类】
+- Category options: 科技、娱乐、经济、体育、灾难、综合
+- **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
+- **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
+- **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
+- **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
+- Summary should be informative with key facts and details
+- Include important numbers, dates, and names
+- **CRITICAL: Write the summary in Mandarin Chinese, not English**
+- Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
+- If multiple prices are mentioned, pick the main product's price as stated.
+- Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
+- Maintain original meaning and context
+- Use clear, professional language
 
-文章标题: {title}
-文章内容: {article_content[:2000]}...
+Article Title: {title}
+Article URL: {article_url}
 
-来源信息:
+Please provide the response in this exact format:
+标题: 【分类】中文标题
+摘要: 中文摘要
+
+Use ONLY numeric values present in the article or in this extracted facts list, and keep the exact units/currency/casing. If a number is not in the facts list and you are unsure, omit it.
+
+CRITICAL: Only mention products, brands, and models that are explicitly mentioned in the source article. Do NOT add products not mentioned in the source.
+
+Source context:
 {products_context}
 {brands_context}
 
-提取的事实: {facts_block}
+Facts (from article text, may be partial):
+{facts_block}
 
-请按以下格式回复：
-标题: 【分类】中文标题
-摘要: 中文摘要"""
+Please read the full article from the URL and provide only the title and summary without any additional commentary."""
 
-        # Initialize Gemini model
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
         
-        print(f"  📤 Sending request to Gemini API...")
-        response = model.generate_content(prompt)
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.1,
+            "stream": False
+        }
         
-        if not response.text:
-            raise Exception("Empty response from Gemini")
+        print(f"  📤 Sending request to DeepSeek API...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        print(f"  📡 DeepSeek API response status: {response.status_code}")
         
-        content = response.text.strip()
-        print(f"  📡 Gemini API response received: {len(content)} characters")
+        if response.status_code != 200:
+            print(f"  ❌ DeepSeek API error: {response.status_code}")
+            print(f"  📄 Response text: {response.text[:500]}...")
+            raise Exception(f"API returned {response.status_code}")
         
-        # Parse the response
-        lines = content.split('\n')
-        chinese_title = ""
-        summary = ""
+        try:
+            result = response.json()
+            print(f"  📋 DeepSeek API response keys: {list(result.keys())}")
+        except Exception as e:
+            print(f"  ❌ Failed to parse JSON response: {e}")
+            print(f"  📄 Raw response: {response.text[:500]}...")
+            raise Exception("Invalid JSON response")
         
-        for line in lines:
-            line = line.strip()
-            if line.startswith('标题:'):
-                chinese_title = line.replace('标题:', '').strip()
-            elif line.startswith('摘要:'):
-                summary = line.replace('摘要:', '').strip()
-            elif not chinese_title and line and not line.startswith('摘要:'):
-                chinese_title = line
-            elif chinese_title and line and not line.startswith('标题:'):
-                if summary:
-                    summary += " " + line
-                else:
-                    summary = line
+        if 'choices' not in result or not result['choices']:
+            print(f"  ❌ No choices in DeepSeek response")
+            print(f"  📋 Full response: {result}")
+            raise Exception("No choices in API response")
         
-        # Fallback if parsing failed
-        if not chinese_title or not summary:
-            print(f"  ⚠️  Could not parse title/summary, using full content")
-            chinese_title = f"【科技】{title}"
-            summary = content[:200] + "..." if len(content) > 200 else content
+        if 'message' not in result['choices'][0] or 'content' not in result['choices'][0]['message']:
+            print(f"  ❌ Invalid response structure")
+            print(f"  📋 Choice structure: {result['choices'][0]}")
+            raise Exception("Invalid response structure")
         
-        print(f"  ✅ Gemini Chinese title: {chinese_title}")
-        print(f"  ✅ Gemini summary generated: {len(summary)} characters")
+        content = result['choices'][0]['message']['content'].strip()
         
-        return chinese_title, summary
+        if not content:
+            print(f"  ❌ Empty content received")
+            raise Exception("Empty content received")
         
-    except Exception as e:
-        print(f"  ❌ Gemini summarization failed: {e}")
-        raise Exception(f"Gemini API error: {e}")
+        # Parse the response to extract title and summary
+        try:
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:'):
+                    # If no title found yet, this might be the title
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:'):
+                    # If we have a title, this is part of the summary
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
+            
+            # If we couldn't parse properly, use the whole content as summary
+            if not chinese_title or not summary:
+                print(f"  ⚠️  Could not parse title/summary, using full content")
+                chinese_title = title  # Fallback to original title
+                summary = content
+            
+            print(f"  ✅ DeepSeek Chinese title: {chinese_title}")
+            print(f"  ✅ DeepSeek summary generated: {len(summary)} characters")
+
+            # Numeric consistency check by reading article content locally
+            try:
+                source_text = read_article_content(article_url)
+                facts = _extract_numeric_facts(source_text)
+                
+                # Check for product hallucination using comprehensive detection
+                source_lower = source_text.lower()
+                summary_lower = summary.lower()
                 
                 # Extract all products/brands mentioned in source
                 source_mentioned = set()
@@ -924,55 +983,105 @@ Now output again in the same format:
         # Fallback to simple truncation
         return title, (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
-def gemini_summarize_content(title, article_content):
-    """Use Google Gemini AI to summarize pre-extracted article content"""
-    if not GEMINI_AVAILABLE:
-        raise Exception("Gemini API not available")
-    
+def deepseek_summarize_content(title, article_content):
+    """Use DeepSeek AI to summarize pre-extracted article content"""
     try:
-        print(f"  🤖 Gemini summarizing content: {title[:50]}...")
+        print(f"  🤖 DeepSeek summarizing content: {title[:50]}...")
         
-        # Extract facts for grounding
+        # Prepare the prompt for DeepSeek
         facts = _extract_numeric_facts(article_content)
         facts_list = sorted(list(facts.get('raw_tokens', set())))
         facts_block = "\n".join(facts_list[:40])
-        
-        # Create Gemini prompt
-        prompt = f"""请分析以下新闻文章并提供：
+        prompt = f"""Please analyze this news article and provide:
 
-1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过50字，简洁明了
+1. **A Mandarin Chinese title with category tag** (简洁明了的中文标题，前面加上【分类】标签)
+2. **A comprehensive summary in Chinese** (no more than 50 words; if Chinese, ≤120 characters)
 
-要求：
-- 标题和摘要必须用中文
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
-- 保持品牌名、产品名、地名、人名用英文
-- 只使用文章中明确提到的数字和事实
-- 不要添加文章中未提及的产品或信息
-- 保持专业、清晰的表达
+Requirements:
+- **Title MUST be in Mandarin Chinese** (not English)
+- **Summary MUST be in Mandarin Chinese** (not English)
+- Title should be concise and capture the main point
+- Add appropriate category tag in front of title using format 【分类】
+- Category options: 科技、娱乐、经济、体育、灾难、综合
+- **IMPORTANT: Keep company/brand names in English** (e.g., Honda, Toyota, Samsung, Apple, Google, Microsoft, etc.)
+- **IMPORTANT: Keep product names in English** (e.g., iPhone, Galaxy, Windows, etc.)
+- **IMPORTANT: Keep location names in English** (e.g., Malaysia, Kuala Lumpur, Singapore, etc.)
+- **IMPORTANT: Keep person names in English** (e.g., Kiandee, Najib, Anwar, etc.)
+- Summary should be informative with key facts and details
+- Include important numbers, dates, and names
+- **CRITICAL: Write the summary in Mandarin Chinese, not English**
+- Do NOT invent or infer numeric values. Only use numbers explicitly present in the article.
+- If multiple prices are mentioned, pick the main product's price as stated.
+- Keep currency symbols/codes exactly as in the article (e.g., RM, MYR, USD, US$).
+- Maintain original meaning and context
+- Use clear, professional language
 
-文章标题: {title}
+Article Title: {title}
 
-文章内容:
+Article Content:
 {article_content}
 
-提取的事实: {facts_block}
-
-请按以下格式回复：
+Please provide the response in this exact format:
 标题: 【分类】中文标题
-摘要: 中文摘要"""
+摘要: 中文摘要
 
-        # Initialize Gemini model
-        model = genai.GenerativeModel('gemini-2.5-flash')
+Use ONLY numeric values present in the article or in this extracted facts list, and keep the exact units/currency/casing. If a number is not in the facts list and you are unsure, omit it.
+
+Facts (from article text, may be partial):
+{facts_block}
+
+Please provide only the title and summary without any additional commentary."""
+
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
         
-        print(f"  📤 Sending request to Gemini API...")
-        response = model.generate_content(prompt)
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.1,
+            "stream": False
+        }
         
-        if not response.text:
-            raise Exception("Empty response from Gemini")
+        print(f"  📤 Sending request to DeepSeek API...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        print(f"  📡 DeepSeek API response status: {response.status_code}")
         
-        content = response.text.strip()
-        print(f"  📡 Gemini API response received: {len(content)} characters")
+        if response.status_code != 200:
+            print(f"  ❌ DeepSeek API error: {response.status_code}")
+            print(f"  📄 Response text: {response.text[:500]}...")
+            raise Exception(f"API returned {response.status_code}")
+        
+        try:
+            result = response.json()
+            print(f"  📋 DeepSeek API response keys: {list(result.keys())}")
+        except Exception as e:
+            print(f"  ❌ Failed to parse JSON response: {e}")
+            print(f"  📄 Raw response: {response.text[:500]}...")
+            raise Exception("Invalid JSON response")
+        
+        if 'choices' not in result or not result['choices']:
+            print(f"  ❌ No choices in DeepSeek response")
+            print(f"  📋 Full response: {result}")
+            raise Exception("No choices in API response")
+        
+        if 'message' not in result['choices'][0] or 'content' not in result['choices'][0]['message']:
+            print(f"  ❌ Invalid response structure")
+            print(f"  📋 Choice structure: {result['choices'][0]}")
+            raise Exception("Invalid response structure")
+        
+        content = result['choices'][0]['message']['content'].strip()
+        
+        if not content:
+            print(f"  ❌ Empty content received")
+            raise Exception("Empty content received")
         
         # Parse the response to extract title and summary
         try:
@@ -1595,7 +1704,7 @@ def main():
                     summary = it["body"] or it["title"]
                     if use_ai:
                         try:
-                            chinese_title, _tmp_summary = gemini_summarize_from_url(it["title"], it['url'])
+                            chinese_title, _tmp_summary = deepseek_summarize_from_url(it["title"], it['url'])
                             if chinese_title:
                                 it["title"] = chinese_title
                                 print(f"  🏷️  AI-generated Chinese title (priority): {chinese_title[:40]}...")
@@ -1620,7 +1729,7 @@ def main():
                         
                         # Use DeepSeek to summarize the actual article content
                         try:
-                            chinese_title, summary = gemini_summarize_content(it["title"], article_content)
+                            chinese_title, summary = deepseek_summarize_content(it["title"], article_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
@@ -1649,7 +1758,7 @@ def main():
                         # Fallback: Use RSS content but still try DeepSeek summarization
                         rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
                         try:
-                            chinese_title, summary = gemini_summarize_content(it["title"], rss_content)
+                            chinese_title, summary = deepseek_summarize_content(it["title"], rss_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:

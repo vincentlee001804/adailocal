@@ -4,3 +4,4 @@ beautifulsoup4
 python-dateutil
 lxml
 sumy
+google-generativeai
