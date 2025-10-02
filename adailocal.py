@@ -1278,9 +1278,9 @@ def main():
                                 print(f"  🏷️  AI-generated Chinese title (priority): {chinese_title[:40]}...")
                         except Exception as e:
                             print(f"  ⚠️  AI title gen failed for priority source: {e}")
-                # Use DeepSeek for AI summarization if enabled
+                # Use Gemini for AI summarization if enabled
                 elif use_ai:
-                    print(f"🔍 Processing with DeepSeek AI: {it['title'][:50]}...")
+                    print(f"🔍 Processing with Gemini AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     
                     # Google News approach: Use Google News to discover, then follow actual source
