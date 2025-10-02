@@ -1140,8 +1140,8 @@ def main():
     use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
     print(f"🔧 Environment check:")
     print(f"  USE_AI_SUMMARY: {os.environ.get('USE_AI_SUMMARY', '0')} -> {use_ai}")
-    print(f"  DEEPSEEK_API_KEY: {'Set' if DEEPSEEK_API_KEY else 'Not set'}")
-    print(f"  DEEPSEEK_API_URL: {DEEPSEEK_API_URL}")
+    print(f"  GEMINI_API_KEY: {'Set' if GEMINI_API_KEY else 'Not set'}")
+    print(f"  GEMINI_AVAILABLE: {GEMINI_AVAILABLE}")
 
     # Load previously sent news for persistent deduplication
     sent_news_urls = load_sent_news()
