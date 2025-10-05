@@ -935,6 +935,18 @@ def gemini_summarize_content(title, article_content):
         # Fallback to simple truncation
         return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
+def _is_mostly_english(text: str) -> bool:
+    try:
+        if not text:
+            return False
+        letters = sum(1 for ch in text if ('a' <= ch.lower() <= 'z'))
+        total = sum(1 for ch in text if ch.isalpha())
+        if total == 0:
+            return False
+        return (letters / total) > 0.6
+    except Exception:
+        return False
+
 def _contains_kw(text_lc: str, keywords):
     import re
     for kw in keywords:
@@ -1324,18 +1336,20 @@ def main():
                     continue
                 use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
 
-                # For priority sources, keep original content; still allow AI to generate a better Chinese title
+                # For priority sources, also generate Chinese summary via Gemini
                 if it.get("priority"):
-                    print(f"  🛑 Priority source: keep original content. AI may generate title only.")
+                    print(f"  🛑 Priority source: using AI for Chinese title and summary.")
                     summary = it["body"] or it["title"]
                     if use_ai:
                         try:
-                            chinese_title, _tmp_summary = gemini_summarize_from_url(it["title"], it['url'])
+                            chinese_title, ai_summary = gemini_summarize_from_url(it["title"], it['url'])
                             if chinese_title:
                                 it["title"] = chinese_title
                                 print(f"  🏷️  AI-generated Chinese title (priority): {chinese_title[:40]}...")
+                            if ai_summary:
+                                summary = ai_summary
                         except Exception as e:
-                            print(f"  ⚠️  AI title gen failed for priority source: {e}")
+                            print(f"  ⚠️  AI generation failed for priority source: {e}")
                 # Use Gemini for AI summarization if enabled
                 elif use_ai:
                     print(f"🔍 Processing with Gemini AI: {it['title'][:50]}...")
@@ -1410,6 +1424,18 @@ def main():
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
                 
+                # If summary still looks English and AI is enabled, try to regenerate in Chinese
+                if use_ai and _is_mostly_english(summary):
+                    try:
+                        print(f"  🔁 Summary looks English; regenerating with Gemini in Chinese")
+                        chinese_title, cn_summary = gemini_summarize_from_url(it["title"], it['url'])
+                        if chinese_title and not it["title"].startswith("【"):
+                            it["title"] = chinese_title
+                        if cn_summary:
+                            summary = cn_summary
+                    except Exception as _e:
+                        print(f"  ⚠️ Regeneration failed: {_e}")
+
                 # Final safety check - ensure we never send empty/placeholder content
                 if not summary or summary.strip() in ["中文摘要", "摘要", "", "中文标题", "【分类】中文标题"]:
                     print(f"  🚨 CRITICAL: Empty/placeholder content detected, using emergency fallback")
