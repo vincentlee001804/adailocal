@@ -407,6 +407,42 @@ def _format_source_name(source):
 
     # Do not append any suffix; show the original media name only
     return source
+
+# Known Chinese name mapping (extendable via env CHINESE_NAME_MAP as JSON)
+_DEFAULT_CHINESE_NAME_MAP = {
+    "Tiong King Sing": "张庆信",
+    "Xi Jinping": "习近平",
+    "Jack Ma": "马云",
+    "Lei Jun": "雷军",
+    "Pony Ma": "马化腾",
+    "Robin Li": "李彦宏",
+    "William Ding": "丁磊",
+}
+
+def _load_chinese_name_map():
+    try:
+        env_json = os.getenv("CHINESE_NAME_MAP", "").strip()
+        if env_json:
+            import json as _json
+            user_map = _json.loads(env_json)
+            if isinstance(user_map, dict):
+                return {**_DEFAULT_CHINESE_NAME_MAP, **user_map}
+    except Exception:
+        pass
+    return dict(_DEFAULT_CHINESE_NAME_MAP)
+
+CHINESE_NAME_MAP = _load_chinese_name_map()
+
+def _apply_chinese_name_map(text: str) -> str:
+    try:
+        if not text:
+            return text
+        out = text
+        for en, zh in CHINESE_NAME_MAP.items():
+            out = re.sub(rf"\b{re.escape(en)}\b", zh, out)
+        return out
+    except Exception:
+        return text
 def _resolve_actual_url(url: str) -> str:
     """Resolve real article URL from Google News or Google redirect links.
     - For news.google.com/rss/articles?...&url=ACTUAL, extract the 'url'/'u' param
@@ -809,7 +845,7 @@ def gemini_summarize_from_url(title, article_url):
 要求：
 - 标题和摘要必须用中文
 - 分类选项：科技、娱乐、经济、体育、灾难、综合
-- 保持品牌名、产品名、地名、人名用英文
+- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
 - 保持专业、清晰的表达
@@ -896,7 +932,7 @@ def gemini_summarize_content(title, article_content):
 要求：
 - 标题和摘要必须用中文
 - 分类选项：科技、娱乐、经济、体育、灾难、综合
-- 保持品牌名、产品名、地名、人名用英文
+- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
 - 保持专业、清晰的表达
@@ -1418,14 +1454,15 @@ def main():
                             print(f"  📄 Summary preview: {summary[:150]}...")
                             
                             # Use the Chinese title from Gemini
-                            it["title"] = chinese_title
+                            it["title"] = _apply_chinese_name_map(chinese_title)
+                            summary = _apply_chinese_name_map(summary)
                             
                         except Exception as gemini_error:
                             print(f"  ❌ Gemini summarization failed: {gemini_error}")
                             print(f"  🔄 Using fallback summarization")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
-                            it["title"] = chinese_title
+                            it["title"] = _apply_chinese_name_map(chinese_title)
                     else:
                         print(f"  ⚠️  Content extraction failed, using RSS content with Gemini")
                         # Fallback: Use RSS content but still try Gemini summarization
@@ -1452,7 +1489,7 @@ def main():
                             print(f"  🔄 Using final fallback")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
-                            it["title"] = chinese_title
+                            it["title"] = _apply_chinese_name_map(chinese_title)
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
                     summary = summarize(it["title"], it["body"])
@@ -1470,6 +1507,10 @@ def main():
                         print(f"  ⚠️ Regeneration failed: {_e}")
 
                 # Final safety check - ensure we never send empty/placeholder content
+                # Apply Chinese name mapping to any remaining English-name instances
+                summary = _apply_chinese_name_map(summary)
+                it["title"] = _apply_chinese_name_map(it["title"])
+
                 if not summary or summary.strip() in ["中文摘要", "摘要", "", "中文标题", "【分类】中文标题"]:
                     print(f"  🚨 CRITICAL: Empty/placeholder content detected, using emergency fallback")
                     summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
