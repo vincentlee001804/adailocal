@@ -407,11 +407,44 @@ def _format_source_name(source):
 
     # Do not append any suffix; show the original media name only
     return source
+def _resolve_actual_url(url: str) -> str:
+    """Resolve real article URL from Google News or Google redirect links.
+    - For news.google.com/rss/articles?...&url=ACTUAL, extract the 'url'/'u' param
+    - For generic google.com/url?url=..., extract and unquote
+    - Otherwise, follow redirects with a lightweight HEAD/GET
+    """
+    try:
+        if not url:
+            return url
+        from urllib.parse import urlparse, parse_qs, unquote
+        parsed = urlparse(url)
+        host = (parsed.netloc or '').lower()
+        # Direct extraction from query param
+        if 'news.google.com' in host or 'google.com' in host:
+            qs = parse_qs(parsed.query)
+            for key in ('url', 'u'):
+                if key in qs and qs[key]:
+                    candidate = unquote(qs[key][0])
+                    if candidate.startswith('http'):
+                        return candidate
+        # Fallback: follow redirects
+        try:
+            r = requests.get(url, timeout=10, allow_redirects=True)
+            final_url = r.url or url
+            return final_url
+        except Exception:
+            return url
+    except Exception:
+        return url
+
 
 def read_article_content(url):
     """Read and extract the main content from an article URL"""
     try:
-        print(f"  📖 Reading article: {url}")
+        resolved_url = _resolve_actual_url(url)
+        if resolved_url != url:
+            print(f"  🔗 Resolved URL: {resolved_url}")
+        print(f"  📖 Reading article: {resolved_url}")
         
         # More comprehensive headers to avoid blocking
         headers = {
@@ -425,7 +458,7 @@ def read_article_content(url):
             'Pragma': 'no-cache',
         }
         
-        response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        response = requests.get(resolved_url, headers=headers, timeout=20, allow_redirects=True)
         print(f"  📡 Response status: {response.status_code}")
         
         if response.status_code != 200:
@@ -445,7 +478,7 @@ def read_article_content(url):
             element.decompose()
         
         # Lowyat.NET: ensure we only read the first article block
-        if 'lowyat.net' in url:
+        if 'lowyat.net' in resolved_url:
             try:
                 # Prefer the first explicit article container
                 main_article = (
@@ -1222,7 +1255,7 @@ def collect_once():
                 
                 items.append({
                     "title": title,
-                    "url": _norm(link),
+                    "url": _norm(_resolve_actual_url(link)),
                     "body": body,
                     "source": source_name,
                     "published_at": published_at,
