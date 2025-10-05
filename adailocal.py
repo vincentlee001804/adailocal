@@ -72,6 +72,9 @@ RSS_FEEDS = [
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
+    # Xiaomi official sources
+    "https://news.mi.com/global/rss",          # Xiaomi Newsroom (global)
+    "https://blog.mi.com/en/feed",             # Xiaomi Official Blog (EN)
     # Chinese-language sources
     "https://www.orientaldaily.com.my/feed/",   # 东方日报马来西亚
     "https://cn.technave.com/feed/",            # TechNave 中文版
@@ -356,6 +359,8 @@ def _extract_source_from_url(url):
             'technave.com': 'TechNave 中文',
             'zinggadget.com': 'Zing Gadget 中文',
             'orientaldaily.com.my': '东方日报',
+            'news.mi.com': 'Xiaomi Newsroom',
+            'mi.com': 'Xiaomi',
             'malaysiakini.com': 'Malaysiakini',
             'astroawani.com': 'Astro Awani',
             'thestar.com.my': 'The Star',
