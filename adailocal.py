@@ -72,6 +72,10 @@ RSS_FEEDS = [
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
+    # Chinese-language sources
+    "https://www.orientaldaily.com.my/feed/",   # 东方日报马来西亚
+    "https://cn.technave.com/feed/",            # TechNave 中文版
+    "https://zinggadget.com/zh/feed/",          # Zing Gadget 中文
     
     # Fallback feeds that are more likely to work on PythonAnywhere
     "https://feeds.feedburner.com/soyacincau",
@@ -91,7 +95,6 @@ RSS_FEEDS = [
     # "https://www.thestar.com.my/rss/News/Nation",
     #"https://www.sinchew.com.my/feed/",
     #"https://www.chinapress.com.my/feed/",
-    #"https://www.orientaldaily.com.my/feed/",
 ]
 
 # Feeds with highest priority (processed first when present)
@@ -350,6 +353,9 @@ def _extract_source_from_url(url):
             'lowyat.net': 'Lowyat.NET',
             'soyacincau.com': 'SoyaCincau',
             'amanz.my': 'Amanz',
+            'technave.com': 'TechNave 中文',
+            'zinggadget.com': 'Zing Gadget 中文',
+            'orientaldaily.com.my': '东方日报',
             'malaysiakini.com': 'Malaysiakini',
             'astroawani.com': 'Astro Awani',
             'thestar.com.my': 'The Star',
