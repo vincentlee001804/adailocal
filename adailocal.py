@@ -1283,8 +1283,12 @@ def collect_once():
                     print(f"  Date parsing failed: {e}")
                 
                 # Only process recent news (last 6 hours for latest news)
-                print(f"  Checking: {title[:50]}...")
-                if not is_recent_news(published_at, hours=6):
+            print(f"  Checking: {title[:50]}...")
+            try:
+                recent_hours = int(os.environ.get("RECENT_NEWS_HOURS", "6"))
+            except Exception:
+                recent_hours = 6
+            if not is_recent_news(published_at, hours=recent_hours):
                     print(f"  Skipping old news: {title[:50]}...")
                     continue
                 
