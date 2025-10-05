@@ -444,6 +444,64 @@ def read_article_content(url):
         for element in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"]):
             element.decompose()
         
+        # Lowyat.NET: ensure we only read the first article block
+        if 'lowyat.net' in url:
+            try:
+                # Prefer the first explicit article container
+                main_article = (
+                    soup.find('article') or
+                    soup.select_one('.entry-content') or
+                    soup.select_one('.post-content') or
+                    soup.select_one('.article-content')
+                )
+                if main_article:
+                    # Collect only meaningful paragraphs inside the first article
+                    text_parts = []
+                    for p in main_article.find_all('p'):
+                        t = p.get_text(strip=True)
+                        if len(t) > 20:
+                            text_parts.append(t)
+                    if text_parts:
+                        content = ' '.join(text_parts)
+                        print("  🎯 Lowyat: extracted from first <article> container")
+                        # continue to common cleanup and return later
+                        # Clean up the content
+                        content = " ".join(content.split())
+                        if len(content) > 8000:
+                            content = content[:8000]
+                            print("  ✂️  Truncated to 8000 characters")
+                        print(f"  ✅ Article content extracted: {len(content)} characters")
+                        if content:
+                            print(f"  📄 Content preview: {content[:200]}...")
+                        return content
+                # Fallback: accumulate <p> tags from the whole page until stop markers
+                stop_markers = [
+                    'ALSO READ', 'Filed Under', 'TRENDING THIS WEEK', 'No Result',
+                    'View All Result', 'Follow us on', 'Share on Facebook', 'Share on Twitter'
+                ]
+                collected = []
+                for p in soup.find_all('p'):
+                    text = p.get_text(strip=True)
+                    if not text:
+                        continue
+                    if any(text.upper().startswith(m.upper()) for m in stop_markers):
+                        break
+                    if len(text) > 20:
+                        collected.append(text)
+                if collected:
+                    content = ' '.join(collected)
+                    print("  🎯 Lowyat: extracted first-news paragraphs with stop markers")
+                    content = " ".join(content.split())
+                    if len(content) > 8000:
+                        content = content[:8000]
+                        print("  ✂️  Truncated to 8000 characters")
+                    print(f"  ✅ Article content extracted: {len(content)} characters")
+                    if content:
+                        print(f"  📄 Content preview: {content[:200]}...")
+                    return content
+            except Exception as _e:
+                print(f"  ⚠️ Lowyat-specific extraction failed: {_e}")
+
         # More comprehensive content selectors for Malaysian news sites
         content_selectors = [
             # Common article selectors
