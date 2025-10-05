@@ -520,6 +520,38 @@ def read_article_content(url):
             return ""
         
         soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Domain-specific extraction: MSN articles are often JS-heavy; prefer JSON-LD/OG data
+        if 'msn.com' in resolved_url:
+            try:
+                # Try JSON-LD Article/NewsArticle payload
+                for script in soup.find_all('script', type='application/ld+json'):
+                    try:
+                        import json as _json
+                        data = _json.loads(script.string or '{}')
+                        if isinstance(data, list):
+                            for obj in data:
+                                if isinstance(obj, dict) and obj.get('@type') in ('Article', 'NewsArticle'):
+                                    body = (obj.get('articleBody') or '').strip()
+                                    if body and len(body) > 80:
+                                        print('  🎯 MSN: extracted articleBody from JSON-LD')
+                                        return " ".join(body.split())[:8000]
+                        elif isinstance(data, dict) and data.get('@type') in ('Article', 'NewsArticle'):
+                            body = (data.get('articleBody') or '').strip()
+                            if body and len(body) > 80:
+                                print('  🎯 MSN: extracted articleBody from JSON-LD')
+                                return " ".join(body.split())[:8000]
+                    except Exception:
+                        continue
+                # Fallback to OpenGraph/Twitter description
+                og_desc = soup.find('meta', attrs={'property': 'og:description'}) or soup.find('meta', attrs={'name': 'description'})
+                if og_desc and og_desc.get('content'):
+                    text = og_desc['content'].strip()
+                    if len(text) > 50:
+                        print('  🎯 MSN: using OG/description as content fallback')
+                        return text[:8000]
+            except Exception:
+                pass
         
         # Remove unwanted elements
         for element in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"]):
