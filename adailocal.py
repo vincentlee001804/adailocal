@@ -521,6 +521,64 @@ def read_article_content(url):
         
         soup = BeautifulSoup(response.content, 'html.parser')
 
+        # Generic improvements for aggregator → source bridging
+        # 1) Follow canonical and AMP versions when available (many sites expose cleaner AMP HTML)
+        try:
+            amp = soup.find('link', rel=lambda v: v and 'amphtml' in v.lower())
+            if amp and amp.get('href') and 'amp' in amp['href']:
+                amp_url = amp['href']
+                if not amp_url.startswith('http'):
+                    from urllib.parse import urljoin
+                    amp_url = urljoin(resolved_url, amp_url)
+                print(f"  🔁 Following AMP page for cleaner content: {amp_url}")
+                amp_resp = requests.get(amp_url, headers=headers, timeout=15, allow_redirects=True)
+                if amp_resp.status_code == 200 and 'html' in amp_resp.headers.get('content-type','').lower():
+                    amp_soup = BeautifulSoup(amp_resp.content, 'html.parser')
+                    amp_paras = amp_soup.find_all('p')
+                    if amp_paras:
+                        amp_text = " ".join([p.get_text(strip=True) for p in amp_paras if len(p.get_text(strip=True)) > 20])
+                        if len(amp_text) > 100:
+                            print("  🎯 Using AMP paragraphs as main content")
+                            return amp_text[:8000]
+        except Exception:
+            pass
+
+        # 2) Try to extract JSON-LD Article/NewsArticle on ANY domain
+        try:
+            import json as _json
+            for script in soup.find_all('script', type='application/ld+json'):
+                try:
+                    data = _json.loads(script.string or '{}')
+                except Exception:
+                    continue
+                def _extract_from(obj):
+                    if not isinstance(obj, dict):
+                        return None
+                    t = obj.get('@type')
+                    if isinstance(t, list):
+                        t = next((x for x in t if isinstance(x, str)), None)
+                    if t in ('Article', 'NewsArticle', 'Report', 'BlogPosting'):
+                        body = (obj.get('articleBody') or obj.get('description') or '').strip()
+                        if body and len(body) > 80:
+                            return body
+                    # Some sites nest under "mainEntityOfPage"
+                    if isinstance(obj.get('mainEntityOfPage'), dict):
+                        return _extract_from(obj['mainEntityOfPage'])
+                    return None
+                if isinstance(data, list):
+                    for obj in data:
+                        body = _extract_from(obj)
+                        if body:
+                            print('  🎯 JSON-LD: extracted article body')
+                            return " ".join(body.split())[:8000]
+                else:
+                    body = _extract_from(data)
+                    if body:
+                        print('  🎯 JSON-LD: extracted article body')
+                        return " ".join(body.split())[:8000]
+        except Exception:
+            pass
+
         # Domain-specific extraction: MSN articles are often JS-heavy; prefer JSON-LD/OG data
         if 'msn.com' in resolved_url:
             try:
