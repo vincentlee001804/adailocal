@@ -1630,7 +1630,12 @@ def main():
             print(f"loop_error: {e}")
         if ONE_SHOT:
             break
-        time.sleep(600)  # every 10 minutes
+        try:
+            loop_sleep = int(os.environ.get("COLLECT_INTERVAL_SEC", "600"))
+        except Exception:
+            loop_sleep = 600
+        print(f"⏳ Sleeping {loop_sleep}s before next cycle...")
+        time.sleep(loop_sleep)
 
 if __name__ == "__main__":
     main()
