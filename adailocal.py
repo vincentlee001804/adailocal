@@ -154,8 +154,8 @@ def is_recent_news(published_at_str, hours=24):
 SEEN = set()
 SENT_URLS = set()  # Track URLs that have been sent to prevent repeats
 
-# Persistent deduplication file
-SENT_NEWS_FILE = "sent_news.txt"
+# Persistent deduplication file (can be overridden to a mounted volume path)
+SENT_NEWS_FILE = os.environ.get("SENT_NEWS_PATH", "sent_news.txt").strip() or "sent_news.txt"
 
 def load_sent_news():
     """Load previously sent news URLs from file"""
@@ -175,6 +175,13 @@ def load_sent_news():
 def save_sent_news(sent_urls):
     """Save sent news URLs to file"""
     try:
+        # Ensure parent directory exists when using volume paths like /data/sent_news.txt
+        try:
+            parent = os.path.dirname(SENT_NEWS_FILE)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+        except Exception:
+            pass
         with open(SENT_NEWS_FILE, 'w', encoding='utf-8') as f:
             for url in sorted(sent_urls):
                 f.write(f"{url}\n")
@@ -1387,21 +1394,24 @@ def collect_once():
                 body = _clean(desc)
                 
                 print(f"  ✅ News found: {title[:50]}...")
-                
-                k = _key(link, title)
-                if k in SEEN: 
-                    print(f"  Already seen this item, skipping")
+
+                # Resolve the actual URL early so dedup works across Google News wrappers
+                resolved_link = _norm(_resolve_actual_url(link))
+
+                k = _key(resolved_link or link, title)
+                if k in SEEN:
+                    print(f"  Already seen this item (resolved dedup), skipping")
                     continue
                 SEEN.add(k)
-                
-                # Also check if we've already sent this URL
-                if link in SENT_URLS:
-                    print(f"  URL already sent, skipping: {link}")
+
+                # Also check if we've already sent this resolved URL
+                if resolved_link in SENT_URLS or link in SENT_URLS:
+                    print(f"  URL already sent, skipping: {resolved_link or link}")
                     continue
-                
+
                 items.append({
                     "title": title,
-                    "url": _norm(_resolve_actual_url(link)),
+                    "url": resolved_link,
                     "body": body,
                     "source": source_name,
                     "published_at": published_at,
