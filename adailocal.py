@@ -65,9 +65,10 @@ RSS_FEEDS = [
     "https://news.google.com/rss/search?q=smartphone+launch+malaysia&hl=en&gl=MY&ceid=MY:en", # Smartphone launches Malaysia
     
     # Primary tech-focused feeds (most reliable)
-    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
-    "https://rss.app/feeds/r5wzRVVTbqYIyfSE.xml", #ZingGadget MY Fb
-    "https://rss.app/feeds/DQPaHn61uiC3hfmk.xml", #TechnaveCN MY Fb
+    # rss.app feeds disabled due to subscription pause
+    # "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
+    # "https://rss.app/feeds/r5wzRVVTbqYIyfSE.xml", #ZingGadget MY Fb
+    # "https://rss.app/feeds/DQPaHn61uiC3hfmk.xml", #TechnaveCN MY Fb
     "https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml", #Soyacincau MY Fb
     "https://www.soyacincau.com/feed/",
     "https://amanz.my/feed/",
@@ -1233,6 +1234,10 @@ def collect_once():
     # Process priority feeds first, then the rest
     ordered_feeds = list(PRIORITY_FEEDS) + [u for u in RSS_FEEDS if u not in PRIORITY_FEEDS]
     for feed_url in ordered_feeds:
+        # Skip rss.app feeds if disabled via env
+        if os.environ.get("DISABLE_RSS_APP", "1") == "1" and "rss.app" in feed_url:
+            print(f"Skipping rss.app feed due to DISABLE_RSS_APP=1: {feed_url}")
+            continue
         try:
             print(f"Fetching: {feed_url}")
             

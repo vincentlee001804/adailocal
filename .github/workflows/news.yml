@@ -1,13 +1,13 @@
 name: Push News Every Hour
 
 on:
-  schedule:
-    - cron: '0 * * * *'
+  # Temporarily disable scheduled runs
   workflow_dispatch:
 
 jobs:
   run-news-bot:
     runs-on: ubuntu-latest
+    if: ${{ false }} # disabled
     env:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
       FEISHU_WEBHOOK_URL_2: ${{ secrets.FEISHU_WEBHOOK_URL_2 }}
