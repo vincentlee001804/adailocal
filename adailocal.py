@@ -538,7 +538,7 @@ def read_article_content(url):
         }
         
         response = requests.get(resolved_url, headers=headers, timeout=20, allow_redirects=True)
-        print(f"  📡 Response status: {response.status_code}")
+        print(f"  📡 Response status: {response.status_code}, Content length: {len(response.content)}")
         
         if response.status_code != 200:
             print(f"  ❌ HTTP error: {response.status_code}")
@@ -549,6 +549,20 @@ def read_article_content(url):
         if 'html' not in content_type:
             print(f"  ❌ Not HTML content: {content_type}")
             return ""
+        
+        # Debug: Check if page has anti-bot protection
+        page_text = response.text.lower()
+        if any(phrase in page_text for phrase in ['cloudflare', 'access denied', 'blocked', 'captcha', 'robot', 'bot detection']):
+            print(f"  ⚠️  Possible anti-bot protection detected")
+            # Try with different headers
+            headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            print(f"  🔄 Retrying with different User-Agent...")
+            try:
+                response = requests.get(resolved_url, headers=headers, timeout=20, allow_redirects=True)
+                print(f"  📡 Retry response: {response.status_code}, Content length: {len(response.content)}")
+            except Exception as e:
+                print(f"  ❌ Retry failed: {e}")
+                return ""
         
         soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -775,6 +789,16 @@ def read_article_content(url):
                 print(f"  🎮 Forza content detected - this appears to be gaming content (may be off-topic)")
             else:
                 print(f"  📝 Content type unclear from preview")
+        
+        # Final debugging - show what we extracted
+        if content:
+            print(f"  ✅ Final content extracted: {len(content)} characters")
+            print(f"  📄 Content preview: {content[:200]}...")
+        else:
+            print(f"  ❌ No content extracted from {resolved_url}")
+            print(f"  🔍 Page title: {soup.find('title').get_text() if soup.find('title') else 'No title'}")
+            print(f"  🔍 Page has {len(soup.find_all('p'))} paragraphs")
+            print(f"  🔍 Page has {len(soup.find_all('article'))} article elements")
         
         return content
         
