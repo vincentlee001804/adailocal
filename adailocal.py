@@ -1549,6 +1549,75 @@ def main():
     # Load previously sent news for persistent deduplication
     sent_news_urls = load_sent_news()
     
+    # Leader election mechanism to prevent duplicate news from multiple machines
+    import time
+    import socket
+    import fcntl
+    import os
+    
+    def is_leader():
+        """Check if this machine should be the leader (only one runs at a time)"""
+        try:
+            # Create a lock file to ensure only one machine runs
+            lock_file = "/data/leader.lock"
+            lock_fd = os.open(lock_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            
+            # Try to acquire an exclusive lock (non-blocking)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            
+            # Write current machine info
+            machine_id = os.environ.get('FLY_MACHINE_ID', 'unknown')
+            timestamp = str(int(time.time()))
+            os.write(lock_fd, f"{machine_id}:{timestamp}\n".encode())
+            os.fsync(lock_fd)
+            
+            return True
+        except (OSError, IOError):
+            # Another machine is already the leader
+            return False
+    
+    def check_leader_health():
+        """Check if the current leader is still healthy"""
+        try:
+            lock_file = "/data/leader.lock"
+            if not os.path.exists(lock_file):
+                return False
+            
+            with open(lock_file, 'r') as f:
+                content = f.read().strip()
+                if not content:
+                    return False
+                
+                parts = content.split(':')
+                if len(parts) != 2:
+                    return False
+                
+                timestamp = int(parts[1])
+                # If leader hasn't updated in 10 minutes, consider it dead
+                if time.time() - timestamp > 600:
+                    print(f"  ⚠️  Leader appears dead (last seen {time.time() - timestamp}s ago)")
+                    return False
+                
+                return True
+        except Exception:
+            return False
+    
+    # Wait for leader election
+    print("🔄 Waiting for leader election...")
+    while not is_leader():
+        if not check_leader_health():
+            print("  💀 Previous leader appears dead, attempting to take over...")
+            try:
+                os.remove("/data/leader.lock")
+            except:
+                pass
+            continue
+        
+        print("  ⏳ Another machine is the leader, waiting...")
+        time.sleep(30)  # Wait 30 seconds before trying again
+    
+    print("  ✅ This machine is now the leader!")
+    
     while True:
         try:
             sent = 0
@@ -1804,6 +1873,17 @@ def main():
             print(f"loop_error: {e}")
         if ONE_SHOT:
             break
+        # Update leader heartbeat
+        try:
+            lock_file = "/data/leader.lock"
+            machine_id = os.environ.get('FLY_MACHINE_ID', 'unknown')
+            timestamp = str(int(time.time()))
+            with open(lock_file, 'w') as f:
+                f.write(f"{machine_id}:{timestamp}\n")
+            print(f"  💓 Leader heartbeat updated")
+        except Exception as e:
+            print(f"  ⚠️  Failed to update heartbeat: {e}")
+        
         try:
             loop_sleep = int(os.environ.get("COLLECT_INTERVAL_SEC", "600"))
         except Exception:
