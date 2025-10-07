@@ -1639,6 +1639,15 @@ def main():
                     print(f"  🚨 CRITICAL: Empty/placeholder title detected, using emergency fallback")
                     it["title"] = f"【科技】{it['title']}"
                 
+                # Force Chinese output for any remaining English content
+                if not it["title"].startswith("【") and not any(ord(c) > 127 for c in it["title"]):
+                    print(f"  🔄 Forcing Chinese title for English content")
+                    it["title"] = f"【综合】{it['title']}"
+                
+                if not any(ord(c) > 127 for c in summary) and len(summary) > 20:
+                    print(f"  🔄 Forcing Chinese summary for English content")
+                    summary = f"根据{it['title']}的报道，这是一条重要的新闻。详细内容请查看原文链接。"
+                
                 # Content quality check - ensure summary is meaningful
                 if len(summary.strip()) < 10:
                     print(f"  ⚠️  Summary too short, enhancing with more details")
