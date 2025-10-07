@@ -1552,7 +1552,6 @@ def main():
     # Leader election mechanism to prevent duplicate news from multiple machines
     import time
     import socket
-    import fcntl
     import os
     
     def is_leader():
@@ -1560,20 +1559,42 @@ def main():
         try:
             # Create a lock file to ensure only one machine runs
             lock_file = "/data/leader.lock"
-            lock_fd = os.open(lock_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
             
-            # Try to acquire an exclusive lock (non-blocking)
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Check if lock file exists and is recent
+            if os.path.exists(lock_file):
+                try:
+                    with open(lock_file, 'r') as f:
+                        content = f.read().strip()
+                        if content:
+                            parts = content.split(':')
+                            if len(parts) == 2:
+                                timestamp = int(parts[1])
+                                # If lock is less than 5 minutes old, another machine is active
+                                if time.time() - timestamp < 300:
+                                    return False
+                except:
+                    pass
             
-            # Write current machine info
+            # Try to become leader
             machine_id = os.environ.get('FLY_MACHINE_ID', 'unknown')
             timestamp = str(int(time.time()))
-            os.write(lock_fd, f"{machine_id}:{timestamp}\n".encode())
-            os.fsync(lock_fd)
             
-            return True
-        except (OSError, IOError):
-            # Another machine is already the leader
+            with open(lock_file, 'w') as f:
+                f.write(f"{machine_id}:{timestamp}\n")
+            
+            # Double-check we're still the leader after a short delay
+            time.sleep(1)
+            try:
+                with open(lock_file, 'r') as f:
+                    content = f.read().strip()
+                    if content and content.startswith(f"{machine_id}:"):
+                        return True
+            except:
+                pass
+            
+            return False
+        except Exception as e:
+            print(f"  ⚠️  Leader election error: {e}")
             return False
     
     def check_leader_health():
@@ -1593,8 +1614,8 @@ def main():
                     return False
                 
                 timestamp = int(parts[1])
-                # If leader hasn't updated in 10 minutes, consider it dead
-                if time.time() - timestamp > 600:
+                # If leader hasn't updated in 5 minutes, consider it dead
+                if time.time() - timestamp > 300:
                     print(f"  ⚠️  Leader appears dead (last seen {time.time() - timestamp}s ago)")
                     return False
                 
