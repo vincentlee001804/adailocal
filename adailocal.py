@@ -1659,7 +1659,6 @@ def main():
                 if is_news_already_sent(it['url'], sent_news_urls):
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
                     continue
-                use_ai = os.environ.get("USE_AI_SUMMARY", "0") == "1"
 
                 # For priority sources, also generate Chinese summary via Gemini
                 if it.get("priority"):
