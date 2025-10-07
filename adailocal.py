@@ -359,6 +359,14 @@ def _extract_source_from_url(url):
             print(f"  🔧 Removing CMS subdomain: {domain} -> {domain[4:]}")
             domain = domain[4:]  # Remove 'cms.' prefix
         
+        # Handle Google News URLs - extract from resolved URL if available
+        if 'news.google.com' in domain:
+            # Try to extract actual source from the resolved URL
+            resolved_url = _resolve_actual_url(url)
+            if resolved_url != url:
+                return _extract_source_from_url(resolved_url)
+            return "Google News"
+        
         # Map domains to friendly names
         domain_mapping = {
             'lowyat.net': 'Lowyat.NET',
@@ -379,7 +387,13 @@ def _extract_source_from_url(url):
             'hmetro.com.my': 'Harian Metro',
             'chinapress.com.my': 'China Press',
             'orientaldaily.com.my': 'Oriental Daily',
-            'sinchew.com.my': 'Sin Chew Daily'
+            'sinchew.com.my': 'Sin Chew Daily',
+            'samsung.com': 'Samsung Malaysia',
+            'samsung.com.my': 'Samsung Malaysia',
+            'msn.com': 'MSN',
+            'cnn.com': 'CNN',
+            'bbc.com': 'BBC',
+            'reuters.com': 'Reuters'
         }
         
         return domain_mapping.get(domain, domain.title())
@@ -474,22 +488,32 @@ def _resolve_actual_url(url: str) -> str:
         from urllib.parse import urlparse, parse_qs, unquote
         parsed = urlparse(url)
         host = (parsed.netloc or '').lower()
-        # Direct extraction from query param
+        
+        # Direct extraction from query param (most reliable for Google News)
         if 'news.google.com' in host or 'google.com' in host:
             qs = parse_qs(parsed.query)
             for key in ('url', 'u'):
                 if key in qs and qs[key]:
                     candidate = unquote(qs[key][0])
                     if candidate.startswith('http'):
+                        print(f"  🔗 Resolved Google News URL: {candidate}")
                         return candidate
-        # Fallback: follow redirects
+        
+        # Fallback: follow redirects with better error handling
         try:
-            r = requests.get(url, timeout=10, allow_redirects=True)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            r = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
             final_url = r.url or url
+            if final_url != url:
+                print(f"  🔗 Resolved redirect URL: {final_url}")
             return final_url
-        except Exception:
+        except Exception as e:
+            print(f"  ⚠️  Redirect resolution failed: {e}")
             return url
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️  URL resolution failed: {e}")
         return url
 
 
@@ -1695,6 +1719,12 @@ def main():
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
                             # Format source name from actual article URL (not RSS feed)
                             source_name = _extract_source_from_url(it['url'])
+                            # If source is still Google News, try to extract from original link
+                            if 'news.google.com' in source_name.lower() or 'google' in source_name.lower():
+                                original_source = _extract_source_from_url(link)  # Use original link before resolution
+                                if original_source and original_source != source_name:
+                                    source_name = original_source
+                                    print(f"  🔄 Using original source: {source_name}")
                             content = f"{summary}\n\n⏰ {time_str}\n\n来源：[{source_name}]({it['url']})"
                         else:
                             source_name = _extract_source_from_url(it['url'])
