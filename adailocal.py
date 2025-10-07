@@ -71,6 +71,7 @@ RSS_FEEDS = [
     # "https://rss.app/feeds/DQPaHn61uiC3hfmk.xml", #TechnaveCN MY Fb
     "https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml", #Soyacincau MY Fb
     "https://www.soyacincau.com/feed/",
+    "https://cn.soyacincau.com/feed/",             # SoyaCincau 中文版
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
     # Xiaomi official sources
@@ -371,6 +372,7 @@ def _extract_source_from_url(url):
         domain_mapping = {
             'lowyat.net': 'Lowyat.NET',
             'soyacincau.com': 'SoyaCincau',
+            'cn.soyacincau.com': 'SoyaCincau 中文',
             'amanz.my': 'Amanz',
             'technave.com': 'TechNave 中文',
             'zinggadget.com': 'Zing Gadget 中文',
