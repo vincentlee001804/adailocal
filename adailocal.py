@@ -1550,9 +1550,6 @@ def main():
     sent_news_urls = load_sent_news()
     
     # Leader election mechanism to prevent duplicate news from multiple machines
-    import time
-    import socket
-    
     def is_leader():
         """Check if this machine should be the leader (only one runs at a time)"""
         try:
