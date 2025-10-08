@@ -1167,11 +1167,23 @@ def _is_mostly_english(text: str) -> bool:
     try:
         if not text:
             return False
-        letters = sum(1 for ch in text if ('a' <= ch.lower() <= 'z'))
-        total = sum(1 for ch in text if ch.isalpha())
-        if total == 0:
+        
+        # Count English letters
+        english_letters = sum(1 for ch in text if ('a' <= ch.lower() <= 'z'))
+        # Count Chinese characters (CJK Unified Ideographs)
+        chinese_chars = sum(1 for ch in text if '\u4e00' <= ch <= '\u9fff')
+        # Count total alphabetic characters
+        total_alpha = sum(1 for ch in text if ch.isalpha())
+        
+        if total_alpha == 0:
             return False
-        return (letters / total) > 0.6
+        
+        # If there are Chinese characters, it's not mostly English
+        if chinese_chars > 0:
+            return False
+        
+        # If more than 50% are English letters, consider it mostly English
+        return (english_letters / total_alpha) > 0.5
     except Exception:
         return False
 
@@ -1779,9 +1791,15 @@ def main():
                     print(f"  🔄 Forcing Chinese title for English content")
                     it["title"] = f"【综合】{it['title']}"
                 
-                if not any(ord(c) > 127 for c in summary) and len(summary) > 20:
+                # More aggressive English detection for summary
+                if (not any(ord(c) > 127 for c in summary) and len(summary) > 20) or _is_mostly_english(summary):
                     print(f"  🔄 Forcing Chinese summary for English content")
-                    summary = f"根据{it['title']}的报道，这是一条重要的新闻。详细内容请查看原文链接。"
+                    # Extract key English words and create a Chinese summary
+                    english_words = [word for word in summary.split() if word.isalpha() and len(word) > 3][:3]
+                    if english_words:
+                        summary = f"根据{it['title']}的报道，这是一条关于{', '.join(english_words)}的重要新闻。详细内容请查看原文链接。"
+                    else:
+                        summary = f"根据{it['title']}的报道，这是一条重要的新闻。详细内容请查看原文链接。"
                 
                 # Content quality check - ensure summary is meaningful
                 if len(summary.strip()) < 10:
