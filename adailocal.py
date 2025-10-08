@@ -1392,13 +1392,13 @@ def collect_once():
     items = []
     # Process priority feeds first, then the rest
     ordered_feeds = list(PRIORITY_FEEDS) + [u for u in RSS_FEEDS if u not in PRIORITY_FEEDS]
-    for feed_url in ordered_feeds:
+    for i, feed_url in enumerate(ordered_feeds):
         # Skip rss.app feeds if disabled via env
         if os.environ.get("DISABLE_RSS_APP", "1") == "1" and "rss.app" in feed_url:
             print(f"Skipping rss.app feed due to DISABLE_RSS_APP=1: {feed_url}")
             continue
         try:
-            print(f"Fetching: {feed_url}")
+            print(f"Fetching ({i+1}/{len(ordered_feeds)}): {feed_url}")
             
             # Add headers to mimic a real browser
             headers = {
@@ -1407,15 +1407,18 @@ def collect_once():
             
             # Try to fetch with requests first, then parse with feedparser
             try:
-                response = requests.get(feed_url, headers=headers, timeout=10)
+                response = requests.get(feed_url, headers=headers, timeout=15)
                 if response.status_code == 200:
                     feed = feedparser.parse(response.content)
                 else:
                     print(f"HTTP {response.status_code} for {feed_url}")
                     feed = feedparser.parse(feed_url)
+            except requests.exceptions.Timeout:
+                print(f"⏰ Timeout for {feed_url} - skipping this feed")
+                continue  # Skip this feed and move to next one
             except Exception as e:
                 print(f"Request failed for {feed_url}: {e}")
-                feed = feedparser.parse(feed_url)
+                continue  # Skip this feed and move to next one
             
             if hasattr(feed, 'bozo') and feed.bozo:
                 print(f"Feed parse warning: {feed_url}")
