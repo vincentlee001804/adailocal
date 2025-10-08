@@ -1406,6 +1406,7 @@ def collect_once():
             }
             
             # Try to fetch with requests first, then parse with feedparser
+            feed = None
             try:
                 response = requests.get(feed_url, headers=headers, timeout=15)
                 if response.status_code == 200:
@@ -1420,6 +1421,11 @@ def collect_once():
                 print(f"Request failed for {feed_url}: {e}")
                 continue  # Skip this feed and move to next one
             
+            # Only proceed if we successfully got a feed
+            if not feed:
+                print(f"⚠️ No feed data for {feed_url} - skipping")
+                continue
+                
             if hasattr(feed, 'bozo') and feed.bozo:
                 print(f"Feed parse warning: {feed_url}")
                 print(f"Bozo exception: {getattr(feed, 'bozo_exception', 'Unknown error')}")
