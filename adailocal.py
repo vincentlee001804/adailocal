@@ -53,16 +53,16 @@ BASE = "https://open.f.mioffice.cn"
 
 RSS_FEEDS = [
     # Google News feeds - Xiaomi and competitors focus
-    "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia
-    "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia
-    "https://news.google.com/rss/search?q=samsung+malaysia&hl=en&gl=MY&ceid=MY:en", # Samsung Malaysia
-    "https://news.google.com/rss/search?q=apple+iphone+malaysia&hl=en&gl=MY&ceid=MY:en", # Apple iPhone Malaysia
-    "https://news.google.com/rss/search?q=oneplus+malaysia&hl=en&gl=MY&ceid=MY:en", # OnePlus Malaysia
-    "https://news.google.com/rss/search?q=huawei+malaysia&hl=en&gl=MY&ceid=MY:en", # Huawei Malaysia
-    "https://news.google.com/rss/search?q=oppo+malaysia&hl=en&gl=MY&ceid=MY:en", # OPPO Malaysia
-    "https://news.google.com/rss/search?q=vivo+malaysia&hl=en&gl=MY&ceid=MY:en", # Vivo Malaysia
-    "https://news.google.com/rss/search?q=realme+malaysia&hl=en&gl=MY&ceid=MY:en", # Realme Malaysia
-    "https://news.google.com/rss/search?q=smartphone+launch+malaysia&hl=en&gl=MY&ceid=MY:en", # Smartphone launches Malaysia
+    # "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=samsung+malaysia&hl=en&gl=MY&ceid=MY:en", # Samsung Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=apple+iphone+malaysia&hl=en&gl=MY&ceid=MY:en", # Apple iPhone Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=oneplus+malaysia&hl=en&gl=MY&ceid=MY:en", # OnePlus Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=huawei+malaysia&hl=en&gl=MY&ceid=MY:en", # Huawei Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=oppo+malaysia&hl=en&gl=MY&ceid=MY:en", # OPPO Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=vivo+malaysia&hl=en&gl=MY&ceid=MY:en", # Vivo Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=realme+malaysia&hl=en&gl=MY&ceid=MY:en", # Realme Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=smartphone+launch+malaysia&hl=en&gl=MY&ceid=MY:en", # Smartphone launches Malaysia (disabled)
     
     # Primary tech-focused feeds (most reliable)
     # rss.app feeds disabled due to subscription pause
@@ -104,8 +104,8 @@ RSS_FEEDS = [
 
 # Feeds with highest priority (processed first when present)
 PRIORITY_FEEDS = {
-    "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia
-    "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia
+    # "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia (disabled)
+    # "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia (disabled)
     "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
 }
 
