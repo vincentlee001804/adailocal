@@ -156,7 +156,7 @@ SEEN = set()
 SENT_URLS = set()  # Track URLs that have been sent to prevent repeats
 
 # Persistent deduplication file (can be overridden to a mounted volume path)
-SENT_NEWS_FILE = os.environ.get("SENT_NEWS_PATH", "sent_news.txt").strip() or "sent_news.txt"
+SENT_NEWS_FILE = os.environ.get("SENT_NEWS_PATH", "logs/sent_news.txt").strip() or "logs/sent_news.txt"
 
 def load_sent_news():
     """Load previously sent news URLs from file"""
