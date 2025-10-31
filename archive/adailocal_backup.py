@@ -24,8 +24,9 @@ except ImportError:
     except FileNotFoundError:
         pass  # .env file doesn't exist, use system environment variables
 
-# Google Gemini API Configuration
-GEMINI_API_KEY = "AIzaSyAIvcZIoGWx5vByGgHVrCtc0hybk3RGCKc"
+# Google Gemini API Configuration (no hardcoded key)
+import os
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 from sumy.parsers.plaintext import PlaintextParser

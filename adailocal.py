@@ -24,8 +24,8 @@ except ImportError:
     except FileNotFoundError:
         pass  # .env file doesn't exist, use system environment variables
 
-# Google Gemini API Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAIvcZIoGWx5vByGgHVrCtc0hybk3RGCKc")
+# Google Gemini API Configuration (no default hardcoded key)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
 # Import Gemini
 try:
