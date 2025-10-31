@@ -89,6 +89,7 @@ fly ssh console -C "bash -lc 'ONE_SHOT=1 python adailocal.py'"
 
 ### Environment variables
 - `FEISHU_WEBHOOK_URL`  Required. Feishu group incoming webhook
+- `GEMINI_API_KEY`      Optional. Google Gemini API key for AI summaries
 - `USE_AI_SUMMARY=1`    Enable TextRank-based AI summary (requires `sumy`)
 - `MAX_PUSH_PER_CYCLE`  Limit messages per cycle (default 1 in Actions)
 - `SEND_INTERVAL_SEC`   Delay between messages inside a cycle
