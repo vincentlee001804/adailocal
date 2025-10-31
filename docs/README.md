@@ -103,14 +103,5 @@ fly ssh console -C "bash -lc 'ONE_SHOT=1 python adailocal.py'"
   - Some sources throttle/deny; the bot skips gracefully and continues.
 
 ### License
-MIT
-
-
-
-
-
-
-
-### License
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
