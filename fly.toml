@@ -5,6 +5,7 @@ app = 'adailocal'
 primary_region = 'sin'
 
 [build]
+  dockerfile = "deploy/Dockerfile"
 
 [http_service]
   internal_port = 8080
