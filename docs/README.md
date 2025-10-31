@@ -56,6 +56,37 @@ Files in `deploy/` can be used for various platforms:
 - Fly.io: use `deploy/fly.toml`
 - Docker: build with `deploy/Dockerfile`
 
+### Fly.io quick deploy
+Prereqs: install Fly CLI and login.
+```bash
+curl -L https://fly.io/install.sh | sh     # Windows: https://fly.io/docs/hands-on/install-windows/
+fly auth login
+```
+
+Initialize app (first time only):
+```bash
+# If no app yet; answers will create a Docker-based app
+fly launch --no-deploy --copy-config --name your-app-name
+# Or, if app already exists, ensure `deploy/fly.toml` matches your app name
+```
+
+Set secrets (required):
+```bash
+fly secrets set FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
+# Optional tuning
+fly secrets set MAX_PUSH_PER_CYCLE=1 USE_AI_SUMMARY=1 ONE_SHOT=0
+```
+
+Deploy:
+```bash
+fly deploy -c deploy/fly.toml
+```
+
+Run one-shot job (optional test):
+```bash
+fly ssh console -C "bash -lc 'ONE_SHOT=1 python adailocal.py'"
+```
+
 ### Environment variables
 - `FEISHU_WEBHOOK_URL`  Required. Feishu group incoming webhook
 - `USE_AI_SUMMARY=1`    Enable TextRank-based AI summary (requires `sumy`)
