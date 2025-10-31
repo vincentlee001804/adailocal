@@ -1,0 +1,27 @@
+# fly.toml at repo root for Fly web deploy
+# Copied from deploy/fly.toml
+
+app = 'adailocal'
+primary_region = 'sin'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 2
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
+
+
