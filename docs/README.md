@@ -17,8 +17,12 @@ Python bot that collects Malaysia-focused news from RSS feeds, summarizes, class
 - `adailocal.py`  Core bot (feeds, classify, summarize, Feishu webhook)
 - `.github/workflows/news.yml`  Scheduler (GitHub Actions, every 10 minutes)
 - `requirements.txt`  Python dependencies
-- `render.yaml`  Optional Render deployment (background worker)
-- `adaiori.py`, `fb_probe.py`  Helpers/experiments
+- `config/.env.example`  Example environment variables
+- `deploy/`  Deployment files (`Dockerfile`, `Procfile`, `fly.toml`)
+- `scripts/`  Helper scripts (`fb_probe.py`)
+- `docs/`  Documentation (this file, PythonAnywhere setup, etc.)
+- `archive/`  Old/experimental scripts (`adaiori.py`, `adailocal_backup.py`)
+- `logs/`  Runtime logs and artifacts (e.g., `sent_news.txt`)
 
 ### Requirements
 - Python 3.11+
@@ -46,8 +50,11 @@ This repo includes `.github/workflows/news.yml` which runs every 10 minutes in O
 The workflow installs deps, runs `python adailocal.py` with env:
 - `ONE_SHOT=1`, `MAX_PUSH_PER_CYCLE=1`, `USE_AI_SUMMARY=1`
 
-### Render (optional)
-Provided `render.yaml` and `Procfile` allow running as a background worker. Add env var `FEISHU_WEBHOOK_URL` in Render. Note: free tier availability may vary.
+### Deployment (optional)
+Files in `deploy/` can be used for various platforms:
+- Render: use `deploy/Procfile` (worker) and supply `FEISHU_WEBHOOK_URL`
+- Fly.io: use `deploy/fly.toml`
+- Docker: build with `deploy/Dockerfile`
 
 ### Environment variables
 - `FEISHU_WEBHOOK_URL`  Required. Feishu group incoming webhook
