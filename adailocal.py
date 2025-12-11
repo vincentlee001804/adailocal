@@ -340,6 +340,46 @@ def send_card_via_webhook(webhook_url, title, content, secret=None):
 		print(f"  📄 Raw response: {r.text}")
 		raise e
 
+# --- Feishu Bitable helpers ---
+# Env vars required:
+#   BITABLE_APP_TOKEN, BITABLE_TABLE_ID, FEISHU_APP_ID, FEISHU_APP_SECRET
+def add_bitable_record(token, app_token, table_id, record_fields):
+    """Append a row to Feishu Bitable."""
+    url = f"{BASE}/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {"fields": record_fields}
+    r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    r.raise_for_status()
+    data = r.json()
+    if data.get("code") != 0:
+        raise RuntimeError(f"Bitable write failed: {data}")
+    return data
+
+def maybe_log_to_bitable(fields):
+    """Safely log a news item to Bitable if env vars are configured."""
+    app_token = os.environ.get("BITABLE_APP_TOKEN", "").strip()
+    table_id = os.environ.get("BITABLE_TABLE_ID", "").strip()
+    app_id = os.environ.get("FEISHU_APP_ID", "").strip()
+    app_secret = os.environ.get("FEISHU_APP_SECRET", "").strip()
+    if not app_token or not table_id:
+        return  # Not configured, skip silently
+    if not app_id or not app_secret:
+        print("⚠️  BITABLE_* is set but FEISHU_APP_ID/SECRET missing; skip logging.")
+        return
+    try:
+        token = get_tenant_access_token(app_id, app_secret)
+    except Exception as e:
+        print(f"⚠️  Failed to get tenant token for Bitable logging: {e}")
+        return
+    try:
+        add_bitable_record(token, app_token, table_id, fields)
+        print("📝 Logged to Bitable")
+    except Exception as e:
+        print(f"⚠️  Failed to log to Bitable: {e}")
+
 def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
@@ -829,6 +869,40 @@ def extract_cover_image_from_html(html, base_url):
     except Exception:
         pass
     return None
+
+BRAND_PATTERNS = {
+    'xiaomi': ['xiaomi', 'mi ', 'redmi', 'poco'],
+    'samsung': ['samsung', 'galaxy'],
+    'apple': ['apple', 'iphone', 'ipad', 'mac'],
+    'vivo': ['vivo', 'iqoo'],
+    'oppo': ['oppo', 'oneplus'],
+    'huawei': ['huawei', 'honor'],
+    'realme': ['realme'],
+    'google': ['google', 'pixel'],
+    'sony': ['sony', 'xperia'],
+    'lg': ['lg'],
+    'motorola': ['motorola', 'moto']
+}
+
+def detect_brand(text: str) -> str:
+    """Detect primary brand from text."""
+    if not text:
+        return "other"
+    lower = text.lower()
+    for brand, patterns in BRAND_PATTERNS.items():
+        if any(p in lower for p in patterns):
+            return brand
+    return "other"
+
+def brand_category(brand: str) -> str:
+    """Map brand to Xiaomi vs Competitor."""
+    if not brand:
+        return "Other"
+    if brand.lower() in ("xiaomi", "poco", "redmi", "mi"):
+        return "Xiaomi"
+    if brand.lower() == "other":
+        return "Other"
+    return "Competitor"
 
 def _extract_numeric_facts(text: str):
     """Extract numeric facts (prices, currencies, dates-like numbers) from text.
@@ -1859,7 +1933,7 @@ def main():
                             source_name = _extract_source_from_url(it['url'])
                             # If source is still Google News, try to extract from original link
                             if 'news.google.com' in source_name.lower() or 'google' in source_name.lower():
-                                original_source = _extract_source_from_url(link)  # Use original link before resolution
+                                original_source = _extract_source_from_url(it.get('url'))  # Use available URL
                                 if original_source and original_source != source_name:
                                     source_name = original_source
                                     print(f"  🔄 Using original source: {source_name}")
@@ -1874,6 +1948,11 @@ def main():
                     source_name = _extract_source_from_url(it['url'])
                     content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 
+                # Brand detection for Xiaomi vs competitors
+                brand = detect_brand(f"{title} {summary} {content}")
+                category_brand = brand_category(brand)
+                brand_label = brand.title() if brand and brand != "other" else "Other"
+
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
                     print(f"CONTENT: {content[:100]}...")
@@ -1898,6 +1977,23 @@ def main():
                         else:
                             send_card_message(token, chat_id, title, content)
                         print(f"✅ API sent successfully")
+
+                # Log to Bitable if configured
+                received_at = datetime.utcnow().isoformat() + "Z"
+                bitable_fields = {
+                    "title": title,
+                    "url": it["url"],
+                    "media": source_name,
+                    "brand": brand_label,
+                    "category": category_brand,
+                    "published_at": it.get("published_at") or "",
+                    "received_at": received_at,
+                    "source_feed": it.get("source", ""),
+                    "hash": _key(it["url"], it["title"]),
+                    "is_duplicate": False,
+                    "summary": summary
+                }
+                maybe_log_to_bitable(bitable_fields)
                 
                 # Mark this URL as sent (both in-memory and persistent)
                 SENT_URLS.add(it['url'])
