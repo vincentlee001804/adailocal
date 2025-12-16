@@ -48,8 +48,8 @@ try:
 except Exception:
     nltk = None
  
-# Feishu China base (keep this)
-BASE = "https://open.f.mioffice.cn"
+# Feishu Open Platform base (international)
+BASE = "https://open.feishu.cn"
 
 RSS_FEEDS = [
     # Google News feeds - Xiaomi and competitors focus
