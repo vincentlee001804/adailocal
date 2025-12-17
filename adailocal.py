@@ -42,7 +42,7 @@ except Exception as e:
 
 # Xiaomi MiMo LLM API Configuration
 MIMO_API_KEY = os.getenv("MIMO_API_KEY", "").strip()
-MIMO_API_BASE = os.getenv("MIMO_API_BASE", "https://api.mimo.xiaomi.com/v1").strip()
+MIMO_API_BASE = os.getenv("MIMO_API_BASE", "https://api.xiaomimimo.com/v1").strip()
 MIMO_MODEL = os.getenv("MIMO_MODEL", "mimo-v2-flash").strip()
 MIMO_AVAILABLE = bool(MIMO_API_KEY)
 if MIMO_AVAILABLE:
@@ -1260,6 +1260,15 @@ def mimo_summarize_from_url(title, article_url):
         if not article_content or len(article_content.strip()) < 50:
             raise Exception("Failed to read article content or content too short")
         
+        # Clean HTML tags if any remain (extra safety)
+        from bs4 import BeautifulSoup
+        if '<' in article_content and '>' in article_content:
+            # Re-parse to ensure clean text
+            soup_clean = BeautifulSoup(article_content, 'html.parser')
+            article_content = soup_clean.get_text(separator=' ', strip=True)
+            article_content = " ".join(article_content.split())  # Normalize whitespace
+            print(f"  🧹 Cleaned HTML tags from content")
+        
         # Extract facts for grounding
         facts = _extract_numeric_facts(article_content)
         facts_list = sorted(list(facts.get('raw_tokens', set())))
@@ -1391,9 +1400,8 @@ def mimo_summarize_from_url(title, article_url):
         
     except Exception as e:
         print(f"  ❌ MiMo summarization failed: {e}")
-        # Fallback to simple truncation
-        article_content = read_article_content(article_url) if article_url else ""
-        return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
+        # Re-raise exception so fallback to Gemini can work
+        raise
 
 def mimo_summarize_content(title, article_content):
     """Use Xiaomi MiMo LLM to summarize pre-extracted article content"""
@@ -1402,6 +1410,15 @@ def mimo_summarize_content(title, article_content):
     
     try:
         print(f"  🤖 MiMo summarizing content: {title[:50]}...")
+        
+        # Clean HTML tags if any remain (extra safety)
+        from bs4 import BeautifulSoup
+        if '<' in article_content and '>' in article_content:
+            # Re-parse to ensure clean text
+            soup_clean = BeautifulSoup(article_content, 'html.parser')
+            article_content = soup_clean.get_text(separator=' ', strip=True)
+            article_content = " ".join(article_content.split())  # Normalize whitespace
+            print(f"  🧹 Cleaned HTML tags from content")
         
         # Extract facts for grounding
         facts = _extract_numeric_facts(article_content)
@@ -1495,13 +1512,13 @@ def mimo_summarize_content(title, article_content):
         except Exception as e:
             print(f"  ⚠️  Error parsing response: {e}")
             print(f"  📄 Raw content: {content[:200]}...")
-            # Fallback: return original title and full content as summary
-            return title, content
+            # Re-raise exception so fallback to Gemini can work
+            raise
         
     except Exception as e:
         print(f"  ❌ MiMo API error: {e}")
-        # Fallback to simple truncation
-        return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
+        # Re-raise exception so fallback to Gemini can work
+        raise
 
 def ai_summarize_from_url(title, article_url):
     """Try MiMo first, fallback to Gemini, for summarizing from URL
