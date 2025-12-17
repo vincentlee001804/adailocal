@@ -40,6 +40,16 @@ except Exception as e:
     print(f"❌ Failed to configure Gemini API: {e}")
     GEMINI_AVAILABLE = False
 
+# Xiaomi MiMo LLM API Configuration
+MIMO_API_KEY = os.getenv("MIMO_API_KEY", "").strip()
+MIMO_API_BASE = os.getenv("MIMO_API_BASE", "https://api.mimo.xiaomi.com/v1").strip()
+MIMO_MODEL = os.getenv("MIMO_MODEL", "mimo-v2-flash").strip()
+MIMO_AVAILABLE = bool(MIMO_API_KEY)
+if MIMO_AVAILABLE:
+    print("✅ Xiaomi MiMo LLM API configured successfully")
+else:
+    print("ℹ️  Xiaomi MiMo LLM API not configured (MIMO_API_KEY not set)")
+
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
@@ -1237,6 +1247,302 @@ def gemini_summarize_content(title, article_content):
         # Fallback to simple truncation
         return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
+def mimo_summarize_from_url(title, article_url):
+    """Use Xiaomi MiMo LLM to read and summarize the article directly from URL"""
+    if not MIMO_AVAILABLE:
+        raise Exception("MiMo API not available")
+    
+    try:
+        print(f"  🤖 MiMo reading and summarizing: {title[:50]}...")
+        
+        # Read article content first
+        article_content = read_article_content(article_url)
+        if not article_content or len(article_content.strip()) < 50:
+            raise Exception("Failed to read article content or content too short")
+        
+        # Extract facts for grounding
+        facts = _extract_numeric_facts(article_content)
+        facts_list = sorted(list(facts.get('raw_tokens', set())))
+        facts_block = "\n".join(facts_list[:40])
+        
+        # Extract mentioned products and brands
+        source_lower = article_content.lower()
+        mentioned_products = []
+        mentioned_brands = []
+        
+        # Brand detection patterns (same as Gemini)
+        brand_patterns = {
+            'xiaomi': ['xiaomi', 'mi ', 'redmi', 'poco'],
+            'samsung': ['samsung', 'galaxy'],
+            'apple': ['apple', 'iphone', 'ipad', 'mac'],
+            'vivo': ['vivo', 'iqoo'],
+            'oppo': ['oppo', 'oneplus'],
+            'huawei': ['huawei', 'honor'],
+            'realme': ['realme'],
+            'google': ['google', 'pixel'],
+            'sony': ['sony', 'xperia'],
+            'lg': ['lg'],
+            'motorola': ['motorola', 'moto']
+        }
+        
+        # Detect mentioned brands
+        for brand, patterns in brand_patterns.items():
+            if any(pattern in source_lower for pattern in patterns):
+                mentioned_brands.append(brand.title())
+        
+        # Look for model numbers
+        import re
+        model_patterns = [
+            r'\b[a-z]+\s*\d{2,4}[a-z]*\b',  # Like "X300", "Y28", "15T"
+            r'\b[a-z]+\s*[a-z]+\s*\d+[a-z]*\b',  # Like "iPhone 15", "Redmi Note 12"
+        ]
+        
+        for pattern in model_patterns:
+            matches = re.findall(pattern, source_lower)
+            for match in matches:
+                if len(match) > 3:
+                    mentioned_products.append(match.title())
+        
+        products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
+        brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
+        
+        # Create MiMo prompt (same format as Gemini)
+        prompt = f"""请阅读以下新闻文章并提供：
+
+1. **中文标题（带分类标签）** - 格式：【分类】中文标题
+2. **中文摘要** - 不超过50字，简洁明了
+
+要求：
+- 标题和摘要必须用中文
+- 分类选项：科技、娱乐、经济、体育、灾难、综合
+- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
+- 只使用文章中明确提到的数字和事实
+- 不要添加文章中未提及的产品或信息
+- 保持专业、清晰的表达
+
+文章标题: {title}
+文章内容: {article_content[:2000]}...
+
+来源信息:
+{products_context}
+{brands_context}
+
+提取的事实: {facts_block}
+
+请按以下格式回复：
+标题: 【分类】中文标题
+摘要: 中文摘要"""
+
+        # Call MiMo API (OpenAI-compatible chat completions)
+        url = f"{MIMO_API_BASE}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {MIMO_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": MIMO_MODEL,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+        
+        print(f"  📤 Sending request to MiMo API...")
+        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+        
+        if "choices" not in data or not data["choices"]:
+            raise Exception("Empty or invalid response from MiMo API")
+        
+        content = data["choices"][0]["message"]["content"].strip()
+        print(f"  📡 MiMo API response received: {len(content)} characters")
+        
+        # Parse the response (same as Gemini)
+        lines = content.split('\n')
+        chinese_title = ""
+        summary = ""
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('标题:'):
+                chinese_title = line.replace('标题:', '').strip()
+            elif line.startswith('摘要:'):
+                summary = line.replace('摘要:', '').strip()
+            elif not chinese_title and line and not line.startswith('摘要:'):
+                chinese_title = line
+            elif chinese_title and line and not line.startswith('标题:'):
+                if summary:
+                    summary += " " + line
+                else:
+                    summary = line
+        
+        # Fallback if parsing failed
+        if not chinese_title or not summary:
+            print(f"  ⚠️  Could not parse title/summary, using full content")
+            chinese_title = f"【科技】{title}"
+            summary = content[:200] + "..." if len(content) > 200 else content
+        
+        print(f"  ✅ MiMo Chinese title: {chinese_title}")
+        print(f"  ✅ MiMo summary generated: {len(summary)} characters")
+        
+        return chinese_title, summary
+        
+    except Exception as e:
+        print(f"  ❌ MiMo summarization failed: {e}")
+        # Fallback to simple truncation
+        article_content = read_article_content(article_url) if article_url else ""
+        return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
+
+def mimo_summarize_content(title, article_content):
+    """Use Xiaomi MiMo LLM to summarize pre-extracted article content"""
+    if not MIMO_AVAILABLE:
+        raise Exception("MiMo API not available")
+    
+    try:
+        print(f"  🤖 MiMo summarizing content: {title[:50]}...")
+        
+        # Extract facts for grounding
+        facts = _extract_numeric_facts(article_content)
+        facts_list = sorted(list(facts.get('raw_tokens', set())))
+        facts_block = "\n".join(facts_list[:40])
+        
+        # Create MiMo prompt
+        prompt = f"""请分析以下新闻文章并提供：
+
+1. **中文标题（带分类标签）** - 格式：【分类】中文标题
+2. **中文摘要** - 不超过50字，简洁明了
+
+要求：
+- 标题和摘要必须用中文
+- 分类选项：科技、娱乐、经济、体育、灾难、综合
+- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
+- 只使用文章中明确提到的数字和事实
+- 不要添加文章中未提及的产品或信息
+- 保持专业、清晰的表达
+
+文章标题: {title}
+
+文章内容:
+{article_content}
+
+提取的事实: {facts_block}
+
+请按以下格式回复：
+标题: 【分类】中文标题
+摘要: 中文摘要"""
+
+        # Call MiMo API (OpenAI-compatible chat completions)
+        url = f"{MIMO_API_BASE}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {MIMO_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": MIMO_MODEL,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+        
+        print(f"  📤 Sending request to MiMo API...")
+        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+        
+        if "choices" not in data or not data["choices"]:
+            raise Exception("Empty or invalid response from MiMo API")
+        
+        content = data["choices"][0]["message"]["content"].strip()
+        print(f"  📡 MiMo API response received: {len(content)} characters")
+        
+        # Parse the response to extract title and summary
+        try:
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:'):
+                    # If no title found yet, this might be the title
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:'):
+                    # If we have a title, this is part of the summary
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
+            
+            # If we couldn't parse properly, use the whole content as summary
+            if not chinese_title or not summary:
+                print(f"  ⚠️  Could not parse title/summary, using full content")
+                chinese_title = title  # Fallback to original title
+                summary = content
+            
+            print(f"  ✅ MiMo Chinese title: {chinese_title}")
+            print(f"  ✅ MiMo summary generated: {len(summary)} characters")
+
+            return chinese_title, summary
+            
+        except Exception as e:
+            print(f"  ⚠️  Error parsing response: {e}")
+            print(f"  📄 Raw content: {content[:200]}...")
+            # Fallback: return original title and full content as summary
+            return title, content
+        
+    except Exception as e:
+        print(f"  ❌ MiMo API error: {e}")
+        # Fallback to simple truncation
+        return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
+
+def ai_summarize_from_url(title, article_url):
+    """Try MiMo first, fallback to Gemini, for summarizing from URL
+    Returns: (chinese_title, summary, provider) where provider is 'mimo' or 'gemini'
+    """
+    if MIMO_AVAILABLE:
+        try:
+            chinese_title, summary = mimo_summarize_from_url(title, article_url)
+            return chinese_title, summary, "mimo"
+        except Exception as e:
+            print(f"  ⚠️  MiMo failed, trying Gemini: {e}")
+    
+    if GEMINI_AVAILABLE:
+        try:
+            chinese_title, summary = gemini_summarize_from_url(title, article_url)
+            return chinese_title, summary, "gemini"
+        except Exception as e:
+            print(f"  ⚠️  Gemini also failed: {e}")
+    
+    raise Exception("Neither MiMo nor Gemini available")
+
+def ai_summarize_content(title, article_content):
+    """Try MiMo first, fallback to Gemini, for summarizing content
+    Returns: (chinese_title, summary, provider) where provider is 'mimo' or 'gemini'
+    """
+    if MIMO_AVAILABLE:
+        try:
+            chinese_title, summary = mimo_summarize_content(title, article_content)
+            return chinese_title, summary, "mimo"
+        except Exception as e:
+            print(f"  ⚠️  MiMo failed, trying Gemini: {e}")
+    
+    if GEMINI_AVAILABLE:
+        try:
+            chinese_title, summary = gemini_summarize_content(title, article_content)
+            return chinese_title, summary, "gemini"
+        except Exception as e:
+            print(f"  ⚠️  Gemini also failed: {e}")
+    
+    raise Exception("Neither MiMo nor Gemini available")
+
 def _is_mostly_english(text: str) -> bool:
     try:
         if not text:
@@ -1755,13 +2061,14 @@ def main():
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
                     continue
 
-                # For priority sources, also generate Chinese summary via Gemini
+                # For priority sources, also generate Chinese summary via AI (MiMo/Gemini)
+                ai_provider_used = None  # Track which AI provider was used
                 if it.get("priority"):
                     print(f"  🛑 Priority source: using AI for Chinese title and summary.")
                     summary = it["body"] or it["title"]
                     if use_ai:
                         try:
-                            chinese_title, ai_summary = gemini_summarize_from_url(it["title"], it['url'])
+                            chinese_title, ai_summary, ai_provider_used = ai_summarize_from_url(it["title"], it['url'])
                             if chinese_title:
                                 it["title"] = chinese_title
                                 print(f"  🏷️  AI-generated Chinese title (priority): {chinese_title[:40]}...")
@@ -1769,9 +2076,10 @@ def main():
                                 summary = ai_summary
                         except Exception as e:
                             print(f"  ⚠️  AI generation failed for priority source: {e}")
-                # Use Gemini for AI summarization if enabled
+                # Use AI (MiMo/Gemini) for summarization if enabled
                 elif use_ai:
-                    print(f"🔍 Processing with Gemini AI: {it['title'][:50]}...")
+                    ai_provider = "MiMo" if MIMO_AVAILABLE else ("Gemini" if GEMINI_AVAILABLE else "None")
+                    print(f"🔍 Processing with {ai_provider} AI: {it['title'][:50]}...")
                     print(f"  📄 Original RSS body: {it['body'][:100]}...")
                     
                     # Google News approach: Use Google News to discover, then follow actual source
@@ -1786,56 +2094,56 @@ def main():
                         print(f"  📖 Article content extracted: {len(article_content)} characters")
                         print(f"  📄 Content preview: {article_content[:200]}...")
                         
-                        # Use Gemini to summarize the actual article content
+                        # Use AI (MiMo/Gemini) to summarize the actual article content
                         try:
-                            chinese_title, summary = gemini_summarize_content(it["title"], article_content)
+                            chinese_title, summary, ai_provider_used = ai_summarize_content(it["title"], article_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
-                                print(f"  ⚠️  Gemini returned empty/placeholder title, using fallback")
+                                print(f"  ⚠️  AI returned empty/placeholder title, using fallback")
                                 chinese_title = f"【科技】{it['title']}"
                             
                             if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
-                                print(f"  ⚠️  Gemini returned empty/placeholder summary, using fallback")
+                                print(f"  ⚠️  AI returned empty/placeholder summary, using fallback")
                                 summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             
-                            print(f"  🤖 Gemini Chinese title: {chinese_title}")
-                            print(f"  🤖 Gemini summary length: {len(summary)} characters")
+                            print(f"  🤖 AI Chinese title: {chinese_title}")
+                            print(f"  🤖 AI summary length: {len(summary)} characters")
                             print(f"  📄 Summary preview: {summary[:150]}...")
                             
-                            # Use the Chinese title from Gemini
+                            # Use the Chinese title from AI
                             it["title"] = _apply_chinese_name_map(chinese_title)
                             summary = _apply_chinese_name_map(summary)
                             
-                        except Exception as gemini_error:
-                            print(f"  ❌ Gemini summarization failed: {gemini_error}")
+                        except Exception as ai_error:
+                            print(f"  ❌ AI summarization failed: {ai_error}")
                             print(f"  🔄 Using fallback summarization")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             it["title"] = _apply_chinese_name_map(chinese_title)
                     else:
-                        print(f"  ⚠️  Content extraction failed, using RSS content with Gemini")
-                        # Fallback: Use RSS content but still try Gemini summarization
+                        print(f"  ⚠️  Content extraction failed, using RSS content with AI")
+                        # Fallback: Use RSS content but still try AI summarization
                         rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
                         try:
-                            chinese_title, summary = gemini_summarize_content(it["title"], rss_content)
+                            chinese_title, summary, ai_provider_used = ai_summarize_content(it["title"], rss_content)
                             
                             # Validate that we got meaningful content
                             if not chinese_title or chinese_title.strip() in ["【分类】中文标题", "中文标题", ""]:
-                                print(f"  ⚠️  Gemini returned empty/placeholder title, using fallback")
+                                print(f"  ⚠️  AI returned empty/placeholder title, using fallback")
                                 chinese_title = f"【科技】{it['title']}"
                             
                             if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
-                                print(f"  ⚠️  Gemini returned empty/placeholder summary, using fallback")
+                                print(f"  ⚠️  AI returned empty/placeholder summary, using fallback")
                                 summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
                             
                             if chinese_title:
                                 it["title"] = chinese_title
                                 print(f"  🏷️  AI-generated Chinese title (RSS fallback): {chinese_title[:40]}...")
-                            print(f"  🤖 Gemini RSS summary length: {len(summary)} characters")
+                            print(f"  🤖 AI RSS summary length: {len(summary)} characters")
                             
-                        except Exception as gemini_error:
-                            print(f"  ❌ Gemini RSS summarization failed: {gemini_error}")
+                        except Exception as ai_error:
+                            print(f"  ❌ AI RSS summarization failed: {ai_error}")
                             print(f"  🔄 Using final fallback")
                             chinese_title = f"【科技】{it['title']}"
                             summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
@@ -1847,8 +2155,8 @@ def main():
                 # If summary still looks English and AI is enabled, try to regenerate in Chinese
                 if use_ai and _is_mostly_english(summary):
                     try:
-                        print(f"  🔁 Summary looks English; regenerating with Gemini in Chinese")
-                        chinese_title, cn_summary = gemini_summarize_from_url(it["title"], it['url'])
+                        print(f"  🔁 Summary looks English; regenerating with AI in Chinese")
+                        chinese_title, cn_summary, ai_provider_used = ai_summarize_from_url(it["title"], it['url'])
                         if chinese_title and not it["title"].startswith("【"):
                             it["title"] = chinese_title
                         if cn_summary:
@@ -1916,6 +2224,7 @@ def main():
                 # No extra required keyword; use the generated title as-is
                 
                 # Add publication time to content
+                source_name = _extract_source_from_url(it['url'])
                 pub_time = it.get("published_at", "")
                 if pub_time:
                     try:
@@ -1929,8 +2238,6 @@ def main():
                                 pub_dt = pub_dt.replace(tzinfo=timezone.utc)
                             malaysia_time = pub_dt.astimezone(malaysia_tz)
                             time_str = malaysia_time.strftime("%Y-%m-%d %H:%M (MYT)")
-                            # Format source name from actual article URL (not RSS feed)
-                            source_name = _extract_source_from_url(it['url'])
                             # If source is still Google News, try to extract from original link
                             if 'news.google.com' in source_name.lower() or 'google' in source_name.lower():
                                 original_source = _extract_source_from_url(it.get('url'))  # Use available URL
@@ -1939,14 +2246,15 @@ def main():
                                     print(f"  🔄 Using original source: {source_name}")
                             content = f"{summary}\n\n⏰ {time_str}\n\n来源：[{source_name}]({it['url']})"
                         else:
-                            source_name = _extract_source_from_url(it['url'])
                             content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                     except:
-                        source_name = _extract_source_from_url(it['url'])
                         content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 else:
-                    source_name = _extract_source_from_url(it['url'])
                     content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
+                
+                # Add MiMo attribution if MiMo was used
+                if ai_provider_used == "mimo":
+                    content += f"\n\n摘要由 [Xiaomi MiMo](https://mimo.xiaomi.com/) LLM 生成"
                 
                 # Brand detection for Xiaomi vs competitors
                 brand = detect_brand(f"{title} {summary} {content}")
