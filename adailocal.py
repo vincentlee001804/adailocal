@@ -215,20 +215,24 @@ def get_tenant_access_token(app_id, app_secret):
         return data["tenant_access_token"]
     raise RuntimeError(f"token_error: {data}")
 
-def send_card_message(token, chat_id, title, content):
+def send_card_message(token, chat_id, title, content, attribution=None):
     url = f"{BASE}/open-apis/im/v1/messages?receive_id_type=chat_id"
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
+    elements = [
+        { "tag": "div", "text": { "tag": "lark_md", "content": content } },
+        { "tag": "hr" }
+    ]
+    # Add attribution if provided (on separate line above disclaimer)
+    if attribution:
+        elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": attribution } })
+    elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注：摘要、正文均不代表个人观点" } })
     card = {
         "header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
         "config": { "wide_screen_mode": True },
-        "elements": [
-            { "tag": "div", "text": { "tag": "lark_md", "content": content } },
-            { "tag": "hr" },
-            { "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注：摘要、正文均不代表个人观点" } }
-        ]
+        "elements": elements
     }
     payload = { "receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card, ensure_ascii=False) }
     r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
@@ -237,7 +241,7 @@ def send_card_message(token, chat_id, title, content):
     if data.get("code") != 0:
         print(f"send_fail: {data}")
 
-def send_card_message_with_image(token, chat_id, title, content, image_key):
+def send_card_message_with_image(token, chat_id, title, content, image_key, attribution=None):
     url = f"{BASE}/open-apis/im/v1/messages?receive_id_type=chat_id"
     headers = {
         'Authorization': f'Bearer {token}',
@@ -252,9 +256,12 @@ def send_card_message_with_image(token, chat_id, title, content, image_key):
         })
     elements.extend([
         { "tag": "div", "text": { "tag": "lark_md", "content": content } },
-        { "tag": "hr" },
-        { "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要，正文均不代表个人观点。摘要经过AI总结,可能存在误差,请以原文为准。" } }
+        { "tag": "hr" }
     ])
+    # Add attribution if provided (on separate line above disclaimer)
+    if attribution:
+        elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": attribution } })
+    elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要，正文均不代表个人观点。摘要经过AI总结,可能存在误差,请以原文为准。" } })
     card = {
         "header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
         "config": { "wide_screen_mode": True },
@@ -267,15 +274,19 @@ def send_card_message_with_image(token, chat_id, title, content, image_key):
     if data.get("code") != 0:
         print(f"send_fail: {data}")
 
-def _build_card(title, content):
+def _build_card(title, content, attribution=None):
+	elements = [
+		{ "tag": "div", "text": { "tag": "lark_md", "content": content } },
+		{ "tag": "hr" }
+	]
+	# Add attribution if provided (on separate line above disclaimer)
+	if attribution:
+		elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": attribution } })
+	elements.append({ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要、正文均不代表个人观点" } })
 	return {
 		"header": { "title": { "content": title, "tag": "plain_text" }, "template": "wathet" },
 		"config": { "wide_screen_mode": True },
-		"elements": [
-			{ "tag": "div", "text": { "tag": "lark_md", "content": content } },
-			{ "tag": "hr" },
-			{ "tag": "div", "text": { "tag": "lark_md", "content": "\n\n注:摘要、正文均不代表个人观点" } }
-		]
+		"elements": elements
 	}
 
 def _gen_webhook_sign(secret, timestamp):
@@ -294,7 +305,7 @@ def test_webhook_connectivity(webhook_urls, secret=None):
     
     return send_to_multiple_webhooks(webhook_urls, test_title, test_content, secret)
 
-def send_to_multiple_webhooks(webhook_urls, title, content, secret=None):
+def send_to_multiple_webhooks(webhook_urls, title, content, secret=None, attribution=None):
     """Send the same message to multiple webhook URLs"""
     success_count = 0
     total_count = len(webhook_urls)
@@ -308,7 +319,7 @@ def send_to_multiple_webhooks(webhook_urls, title, content, secret=None):
             print(f"  📝 Title: {title[:50]}...")
             print(f"  🔐 Secret: {'Set' if secret else 'Not set'}")
             
-            send_card_via_webhook(webhook_url, title, content, secret)
+            send_card_via_webhook(webhook_url, title, content, secret, attribution)
             success_count += 1
             print(f"✅ Webhook {i} sent successfully")
         except Exception as webhook_error:
@@ -323,9 +334,9 @@ def send_to_multiple_webhooks(webhook_urls, title, content, secret=None):
         print(f"⚠️  Some webhooks failed ({total_count - success_count} failed)")
     return success_count > 0
 
-def send_card_via_webhook(webhook_url, title, content, secret=None):
+def send_card_via_webhook(webhook_url, title, content, secret=None, attribution=None):
 	# Always send interactive card so markdown links are clickable
-	card = _build_card(title, content)
+	card = _build_card(title, content, attribution)
 	payload = { "msg_type": "interactive", "card": card }
 	if secret:
 		ts = str(int(time.time()))
@@ -2300,9 +2311,10 @@ def main():
                 else:
                     content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 
-                # Add MiMo attribution if MiMo was used
+                # Prepare MiMo attribution if MiMo was used (separate from content)
+                attribution = None
                 if ai_provider_used == "mimo":
-                    content += f"\n\n摘要由 [Xiaomi MiMo](https://mimo.xiaomi.com/) LLM 生成"
+                    attribution = "摘要由 [Xiaomi MiMo](https://mimo.xiaomi.com/) LLM 生成"
                 
                 # Brand detection for Xiaomi vs competitors
                 brand = detect_brand(f"{title} {summary} {content}")
@@ -2312,12 +2324,14 @@ def main():
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
                     print(f"CONTENT: {content[:100]}...")
+                    if attribution:
+                        print(f"ATTRIBUTION: {attribution}")
                 else:
                     if len(webhook_urls) > 0 and not USE_APP_API:
                         # Send to all configured webhook URLs
                         print(f"📝 Title: {title}")
                         print(f"📄 Content preview: {content[:200]}...")
-                        send_to_multiple_webhooks(webhook_urls, title, content, webhook_secret)
+                        send_to_multiple_webhooks(webhook_urls, title, content, webhook_secret, attribution)
                     else:
                         print(f"📤 Sending via API (token method)")
                         token = get_tenant_access_token(app_id, app_secret)
@@ -2329,9 +2343,9 @@ def main():
                         if cover_url:
                             image_key = upload_image_to_feishu(token, cover_url)
                         if image_key:
-                            send_card_message_with_image(token, chat_id, title, content, image_key)
+                            send_card_message_with_image(token, chat_id, title, content, image_key, attribution)
                         else:
-                            send_card_message(token, chat_id, title, content)
+                            send_card_message(token, chat_id, title, content, attribution)
                         print(f"✅ API sent successfully")
 
                 # Log to Bitable if configured
