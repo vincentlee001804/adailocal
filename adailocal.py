@@ -2321,55 +2321,71 @@ def main():
                 category_brand = brand_category(brand)
                 brand_label = brand.title() if brand and brand != "other" else "Other"
 
+                send_successful = False
                 if TEST_MODE:
                     print(f"WOULD SEND: {title}")
                     print(f"CONTENT: {content[:100]}...")
                     if attribution:
                         print(f"ATTRIBUTION: {attribution}")
+                    send_successful = True  # In test mode, consider it successful
                 else:
                     if len(webhook_urls) > 0 and not USE_APP_API:
                         # Send to all configured webhook URLs
                         print(f"📝 Title: {title}")
                         print(f"📄 Content preview: {content[:200]}...")
-                        send_to_multiple_webhooks(webhook_urls, title, content, webhook_secret, attribution)
+                        send_successful = send_to_multiple_webhooks(webhook_urls, title, content, webhook_secret, attribution)
+                        if send_successful:
+                            print(f"✅ At least one webhook sent successfully")
+                        else:
+                            print(f"❌ All webhooks failed - news NOT marked as sent")
                     else:
                         print(f"📤 Sending via API (token method)")
-                        token = get_tenant_access_token(app_id, app_secret)
-                        image_key = None
-                        # Try to get cover from RSS, else from article page
-                        cover_url = it.get('cover_url')
-                        if not cover_url:
-                            cover_url = extract_cover_image(it['url'])
-                        if cover_url:
-                            image_key = upload_image_to_feishu(token, cover_url)
-                        if image_key:
-                            send_card_message_with_image(token, chat_id, title, content, image_key, attribution)
-                        else:
-                            send_card_message(token, chat_id, title, content, attribution)
-                        print(f"✅ API sent successfully")
+                        try:
+                            token = get_tenant_access_token(app_id, app_secret)
+                            image_key = None
+                            # Try to get cover from RSS, else from article page
+                            cover_url = it.get('cover_url')
+                            if not cover_url:
+                                cover_url = extract_cover_image(it['url'])
+                            if cover_url:
+                                image_key = upload_image_to_feishu(token, cover_url)
+                            if image_key:
+                                send_card_message_with_image(token, chat_id, title, content, image_key, attribution)
+                            else:
+                                send_card_message(token, chat_id, title, content, attribution)
+                            print(f"✅ API sent successfully")
+                            send_successful = True
+                        except Exception as api_error:
+                            print(f"❌ API send failed: {api_error}")
+                            print(f"❌ News NOT marked as sent due to API failure")
+                            send_successful = False
 
-                # Log to Bitable if configured
-                received_at = datetime.utcnow().isoformat() + "Z"
-                bitable_fields = {
-                    "title": title,
-                    "url": it["url"],
-                    "media": source_name,
-                    "brand": brand_label,
-                    "category": category_brand,
-                    "published_at": it.get("published_at") or "",
-                    "received_at": received_at,
-                    "source_feed": it.get("source", ""),
-                    "hash": _key(it["url"], it["title"]),
-                    "is_duplicate": False,
-                    "summary": summary
-                }
-                maybe_log_to_bitable(bitable_fields)
-                
-                # Mark this URL as sent (both in-memory and persistent)
-                SENT_URLS.add(it['url'])
-                sent_news_urls.add(it['url'])
-                print(f"✅ Sent news: {it['title'][:50]}...")
-                sent += 1
+                # Only mark as sent and log to Bitable if send was successful
+                if send_successful:
+                    # Log to Bitable if configured
+                    received_at = datetime.utcnow().isoformat() + "Z"
+                    bitable_fields = {
+                        "title": title,
+                        "url": it["url"],
+                        "media": source_name,
+                        "brand": brand_label,
+                        "category": category_brand,
+                        "published_at": it.get("published_at") or "",
+                        "received_at": received_at,
+                        "source_feed": it.get("source", ""),
+                        "hash": _key(it["url"], it["title"]),
+                        "is_duplicate": False,
+                        "summary": summary
+                    }
+                    maybe_log_to_bitable(bitable_fields)
+                    
+                    # Mark this URL as sent (both in-memory and persistent)
+                    SENT_URLS.add(it['url'])
+                    sent_news_urls.add(it['url'])
+                    print(f"✅ Sent news: {it['title'][:50]}...")
+                    sent += 1
+                else:
+                    print(f"⚠️  News NOT marked as sent due to send failure - will retry next cycle")
                 if sent >= MAX_PER_CYCLE:
                     print(f"Reached MAX_PER_CYCLE={MAX_PER_CYCLE}, stop sending this round.")
                     break
