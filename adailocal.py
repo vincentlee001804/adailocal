@@ -1315,6 +1315,21 @@ def mimo_summarize_from_url(title, article_url):
         products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
         brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
         
+        # Limit content length for API (keep more content than before)
+        original_length = len(article_content)
+        if len(article_content) > 5000:
+            article_content_truncated = article_content[:5000]
+            print(f"  ✂️  Truncated content from {original_length} to 5000 characters for MiMo API")
+        else:
+            article_content_truncated = article_content
+            print(f"  📄 Sending {len(article_content)} characters of content to MiMo")
+        
+        # Log content preview to verify it's not empty
+        if len(article_content.strip()) < 100:
+            print(f"  ⚠️  WARNING: Content seems too short ({len(article_content)} chars)")
+        else:
+            print(f"  📝 Content preview (first 300 chars): {article_content[:300]}...")
+        
         # Create MiMo prompt (same format as Gemini)
         prompt = f"""请阅读以下新闻文章并提供：
 
@@ -1328,9 +1343,10 @@ def mimo_summarize_from_url(title, article_url):
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
 - 保持专业、清晰的表达
+- **重要：请仔细阅读文章内容，不要只基于标题生成摘要**
 
 文章标题: {title}
-文章内容: {article_content[:2000]}...
+文章内容: {article_content_truncated}
 
 来源信息:
 {products_context}
@@ -1420,6 +1436,20 @@ def mimo_summarize_content(title, article_content):
             article_content = " ".join(article_content.split())  # Normalize whitespace
             print(f"  🧹 Cleaned HTML tags from content")
         
+        # Limit content length for API (keep more content than before)
+        original_length = len(article_content)
+        if len(article_content) > 5000:
+            article_content = article_content[:5000]
+            print(f"  ✂️  Truncated content from {original_length} to 5000 characters for MiMo API")
+        else:
+            print(f"  📄 Sending {len(article_content)} characters of content to MiMo")
+        
+        # Log content preview to verify it's not empty
+        if len(article_content.strip()) < 100:
+            print(f"  ⚠️  WARNING: Content seems too short ({len(article_content)} chars)")
+        else:
+            print(f"  📝 Content preview (first 300 chars): {article_content[:300]}...")
+        
         # Extract facts for grounding
         facts = _extract_numeric_facts(article_content)
         facts_list = sorted(list(facts.get('raw_tokens', set())))
@@ -1438,6 +1468,7 @@ def mimo_summarize_content(title, article_content):
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
 - 保持专业、清晰的表达
+- **重要：请仔细阅读文章内容，不要只基于标题生成摘要**
 
 文章标题: {title}
 
