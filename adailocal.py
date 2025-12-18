@@ -371,11 +371,27 @@ def add_bitable_record(token, app_token, table_id, record_fields):
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    payload = {"fields": record_fields}
+    # Filter out None values and empty strings to avoid errors
+    filtered_fields = {k: v for k, v in record_fields.items() if v is not None and v != ""}
+    payload = {"fields": filtered_fields}
     r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
     r.raise_for_status()
     data = r.json()
     if data.get("code") != 0:
+        # Check if it's a field name error - provide helpful message
+        error_code = data.get("code")
+        error_msg = data.get("msg", "")
+        if error_code == 1254045 or "FieldNameNotFound" in error_msg:
+            error_detail = data.get("error", {})
+            field_name = ""
+            if isinstance(error_detail, dict):
+                error_message = error_detail.get("message", "")
+                # Try to extract field name from error message
+                if "fields." in error_message:
+                    parts = error_message.split("fields.")
+                    if len(parts) > 1:
+                        field_name = parts[1].split(".")[0]
+            raise RuntimeError(f"Bitable field '{field_name}' not found in table. Please create this field in your Bitable or update the code. Error: {data}")
         raise RuntimeError(f"Bitable write failed: {data}")
     return data
 
