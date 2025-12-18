@@ -941,6 +941,30 @@ def brand_category(brand: str) -> str:
         return "Other"
     return "Competitor"
 
+def map_category_to_bitable(chinese_category: str) -> str:
+    """Map Chinese category from classify() or LLM to English Bitable category options.
+    
+    Bitable options: Politics, Economy, Technology, Entertainment, Sports, 
+                     Health, Environment, Science, Education, Culture
+    """
+    if not chinese_category:
+        return "Politics"
+    
+    # Normalize the category (handle variations)
+    category_lower = chinese_category.strip()
+    
+    mapping = {
+        "经济": "Economy",
+        "科技": "Technology", 
+        "文娱": "Entertainment",
+        "娱乐": "Entertainment",  # LLM might return "娱乐" instead of "文娱"
+        "体育": "Sports",
+        "灾害": "Environment",  # Disaster/Environment related
+        "灾难": "Environment",  # LLM might return "灾难" instead of "灾害"
+        "综合": "Politics"  # General/Comprehensive -> Politics as default
+    }
+    return mapping.get(category_lower, "Politics")  # Default to Politics if not found
+
 def _extract_numeric_facts(text: str):
     """Extract numeric facts (prices, currencies, dates-like numbers) from text.
     Returns a dict with sets: prices, currencies, numbers, raw_tokens.
@@ -2409,12 +2433,15 @@ def main():
                     else:
                         url_link_obj = None
                     
+                    # Map Chinese category to English Bitable category
+                    bitable_category = map_category_to_bitable(category)
+                    
                     bitable_fields = {
                         "title": title,
                         "url": url_link_obj,  # Link field must be object, not string
                         "media": source_name,
                         "brand": brand_label,
-                        "category": category_brand,
+                        "category": bitable_category,  # Use mapped news category, not brand category
                         "published_at": published_at_timestamp if published_at_timestamp else None,
                         "received_at": received_at_timestamp,
                         "source_feed": it.get("source", ""),
