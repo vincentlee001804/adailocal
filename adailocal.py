@@ -2363,15 +2363,33 @@ def main():
                 # Only mark as sent and log to Bitable if send was successful
                 if send_successful:
                     # Log to Bitable if configured
-                    received_at = datetime.utcnow().isoformat() + "Z"
+                    # Convert datetime to Unix timestamp (milliseconds) for Bitable
+                    from datetime import datetime, timezone
+                    received_at_dt = datetime.utcnow().replace(tzinfo=timezone.utc)
+                    received_at_timestamp = int(received_at_dt.timestamp() * 1000)  # Convert to milliseconds
+                    
+                    # Convert published_at if provided (from ISO string to Unix timestamp)
+                    published_at_timestamp = None
+                    published_at_str = it.get("published_at", "")
+                    if published_at_str:
+                        try:
+                            pub_dt = dateparser.parse(published_at_str)
+                            if pub_dt:
+                                # Ensure timezone-aware
+                                if pub_dt.tzinfo is None:
+                                    pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+                                published_at_timestamp = int(pub_dt.timestamp() * 1000)  # Convert to milliseconds
+                        except Exception as e:
+                            print(f"  ⚠️  Failed to parse published_at for Bitable: {e}")
+                    
                     bitable_fields = {
                         "title": title,
                         "url": it["url"],
                         "media": source_name,
                         "brand": brand_label,
                         "category": category_brand,
-                        "published_at": it.get("published_at") or "",
-                        "received_at": received_at,
+                        "published_at": published_at_timestamp if published_at_timestamp else None,
+                        "received_at": received_at_timestamp,
                         "source_feed": it.get("source", ""),
                         "hash": _key(it["url"], it["title"]),
                         "is_duplicate": False,
