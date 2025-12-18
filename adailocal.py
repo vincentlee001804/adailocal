@@ -2331,14 +2331,13 @@ def main():
                         if start > 0 and end > start:
                             raw_category = it["title"][start:end]
                             print(f"  🏷️  Category extracted from title: {raw_category}")
-                            # If LLM gave a very generic 分类 like 综合, try our rule-based classifier instead
-                            if raw_category == "综合":
-                                inferred = classify(it["title"], summary)
-                                category = inferred or raw_category
-                                if category != raw_category:
-                                    print(f"  🔁 Overriding 综合 with inferred category: {category}")
+                            # Always run our own classifier to get a more accurate category
+                            inferred = classify(it["title"], summary)
+                            if inferred and inferred != raw_category:
+                                category = inferred
+                                print(f"  🔁 Overriding LLM category '{raw_category}' with inferred category: {category}")
                             else:
-                                category = raw_category
+                                category = raw_category or (inferred or "综合")
                             # Rebuild title so the bracket label always matches our final category
                             plain_title = it["title"][end + 1 :].lstrip()
                             title = f"【{category}】{plain_title}"
