@@ -954,6 +954,7 @@ def map_category_to_bitable(chinese_category: str) -> str:
     category_lower = chinese_category.strip()
     
     mapping = {
+        "政治": "Politics",
         "经济": "Economy",
         "科技": "Technology", 
         "文娱": "Entertainment",
@@ -961,7 +962,7 @@ def map_category_to_bitable(chinese_category: str) -> str:
         "体育": "Sports",
         "灾害": "Environment",  # Disaster/Environment related
         "灾难": "Environment",  # LLM might return "灾难" instead of "灾害"
-        "综合": "Politics"  # General/Comprehensive -> Politics as default
+        "综合": "Politics"  # General/Comprehensive -> Politics as default / fallback
     }
     return mapping.get(category_lower, "Politics")  # Default to Politics if not found
 
@@ -1138,7 +1139,7 @@ def gemini_summarize_from_url(title, article_url):
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
+        - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
@@ -1225,7 +1226,7 @@ def gemini_summarize_content(title, article_content):
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
+        - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
@@ -1389,7 +1390,7 @@ def mimo_summarize_from_url(title, article_url):
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
+- 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
@@ -1515,7 +1516,7 @@ def mimo_summarize_content(title, article_content):
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-- 分类选项：科技、娱乐、经济、体育、灾难、综合
+- 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
@@ -1685,6 +1686,24 @@ def _contains_kw(text_lc: str, keywords):
 def classify(title, text):
     t = (title + " " + text).lower()
     
+    # 政治 (Politics) - keywords
+    politics_keywords = [
+        "parliament", "parlimen", "dpr", "senate", "senator",
+        "prime minister", "perdana menteri", "pm ", "president", "presiden",
+        "mps", "ahli parlimen", "wakil rakyat",
+        "election", "elections", "pilihan raya", "pru", "by-election", "prk",
+        "manifesto", "campaign", "kempen", "undi", "voter", "pengundi",
+        "government", "kerajaan", "cabinet", "kabinet", "ministry", "kementerian",
+        "minister", "menteri", "deputy minister", "timbalan menteri",
+        "opposition", "pembangkang", "coalition", "pakatan", "barisan",
+        "umno", "pas ", "pkr", "dap", "bersatu", "amanah", "gps ",
+        "law", "act", "bill", "rang undang-undang", "constitution", "perlembagaan",
+        "policy", "dasar", "ordinance", "regulation", "enactment",
+        "royal decree", "agong", "yang di-pertuan agong", "sultan",
+        "macc", "sprm", "anti-corruption", "rasuah",
+        "shafee", "najib", "jho low", "1mdb"
+    ]
+    
     # 经济 (Economy) - Expanded keywords
     economy_keywords = [
         "ringgit", "bnm", "gdp", "market", "investment", "budget", "economy", "economic",
@@ -1792,7 +1811,7 @@ def classify(title, text):
         "tech diversity", "inclusion", "equality", "tech for all", "democratizing tech"
     ]
     
-    # 文娱 (Entertainment) - Expanded keywords
+    # 文娱 / 娱乐 (Entertainment) - Expanded keywords
     entertainment_keywords = [
         "film", "movie", "concert", "celebrity", "艺人", "pelakon", "entertainment", "hiburan",
         "cinema", "wayang", "theater", "teater", "drama", "drama", "musical", "muzikal",
@@ -1825,6 +1844,7 @@ def classify(title, text):
     ]
     
     # Check categories in order of specificity
+    if _contains_kw(t, politics_keywords): return "政治"
     if _contains_kw(t, economy_keywords): return "经济"
     if _contains_kw(t, disaster_keywords): return "灾害"
     if _contains_kw(t, sports_keywords): return "体育"
@@ -2309,13 +2329,24 @@ def main():
                         start = it["title"].find("【") + 1
                         end = it["title"].find("】")
                         if start > 0 and end > start:
-                            category = it["title"][start:end]
-                            print(f"  🏷️  Category extracted from title: {category}")
-                            title = it["title"]  # Use the title as-is since it already has the category
+                            raw_category = it["title"][start:end]
+                            print(f"  🏷️  Category extracted from title: {raw_category}")
+                            # If LLM gave a very generic 分类 like 综合, try our rule-based classifier instead
+                            if raw_category == "综合":
+                                inferred = classify(it["title"], summary)
+                                category = inferred or raw_category
+                                if category != raw_category:
+                                    print(f"  🔁 Overriding 综合 with inferred category: {category}")
+                            else:
+                                category = raw_category
+                            # Rebuild title so the bracket label always matches our final category
+                            plain_title = it["title"][end + 1 :].lstrip()
+                            title = f"【{category}】{plain_title}"
                         else:
                             category = classify(it["title"], summary)
                             title = f"【{category}】{it['title']}"
-                    except:
+                    except Exception as e:
+                        print(f"  ⚠️  Failed to extract category from title, fallback to classifier: {e}")
                         category = classify(it["title"], summary)
                         title = f"【{category}】{it['title']}"
                 else:
