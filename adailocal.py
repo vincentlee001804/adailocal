@@ -2323,23 +2323,27 @@ def main():
                 print(f"    Title: {it['title']}")
                 print(f"    Summary: {summary[:100]}...")
                 print(f"    Summary length: {len(summary)} characters")
-                # Extract category from title if it contains 【】 tags, otherwise use rule-based classification
+                # Extract category from LLM title if it contains 【】 tags.
+                # Prefer the LLM's own category (based on full content). Fall back to our
+                # rule-based classifier only when the LLM label is missing or invalid.
                 if "【" in it["title"] and "】" in it["title"]:
-                    # Extract category from title (e.g., 【科技】标题 -> 科技)
                     try:
                         start = it["title"].find("【") + 1
                         end = it["title"].find("】")
                         if start > 0 and end > start:
                             raw_category = it["title"][start:end]
-                            print(f"  🏷️  Category extracted from title: {raw_category}")
-                            # Always run our own classifier to get a more accurate category
-                            inferred = classify(it["title"], summary)
-                            if inferred and inferred != raw_category:
-                                category = inferred
-                                print(f"  🔁 Overriding LLM category '{raw_category}' with inferred category: {category}")
+                            print(f"  🏷️  Category extracted from LLM title: {raw_category}")
+                            # Allowable categories from LLM prompt
+                            allowed_categories = {"科技", "娱乐", "经济", "体育", "灾难", "政治", "综合"}
+                            if raw_category in allowed_categories:
+                                category = raw_category
+                                print(f"  ✅ Using LLM category: {category}")
                             else:
-                                category = raw_category or (inferred or "综合")
-                            # Rebuild title so the bracket label always matches our final category
+                                # If LLM returns something unexpected, fall back to our classifier
+                                inferred = classify(it["title"], summary)
+                                category = inferred or "综合"
+                                print(f"  🔁 Invalid LLM category '{raw_category}', using inferred: {category}")
+                            # Rebuild title so the bracket label always matches final category
                             plain_title = it["title"][end + 1 :].lstrip()
                             title = f"【{category}】{plain_title}"
                         else:
