@@ -2382,9 +2382,20 @@ def main():
                         except Exception as e:
                             print(f"  ⚠️  Failed to parse published_at for Bitable: {e}")
                     
+                    # Format URL as Link object for Bitable (Link fields require object format)
+                    url_value = it["url"]
+                    if url_value:
+                        # Bitable Link field expects: {"link": "url", "text": "text"}
+                        url_link_obj = {
+                            "link": url_value,
+                            "text": url_value  # Use URL as text, or could use title
+                        }
+                    else:
+                        url_link_obj = None
+                    
                     bitable_fields = {
                         "title": title,
-                        "url": it["url"],
+                        "url": url_link_obj,  # Link field must be object, not string
                         "media": source_name,
                         "brand": brand_label,
                         "category": category_brand,
