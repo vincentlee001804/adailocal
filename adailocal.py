@@ -1687,19 +1687,20 @@ def classify(title, text):
     t = (title + " " + text).lower()
     
     # 政治 (Politics) - keywords
+    # Keep this list conservative so that only clearly political / national-level stories
+    # are tagged as 政治. Local policy / lifestyle-related items will fall back to 综合.
     politics_keywords = [
-        "parliament", "parlimen", "dpr", "senate", "senator",
-        "prime minister", "perdana menteri", "pm ", "president", "presiden",
-        "mps", "ahli parlimen", "wakil rakyat",
+        # Elections and parties
         "election", "elections", "pilihan raya", "pru", "by-election", "prk",
         "manifesto", "campaign", "kempen", "undi", "voter", "pengundi",
-        "government", "kerajaan", "cabinet", "kabinet", "ministry", "kementerian",
-        "minister", "menteri", "deputy minister", "timbalan menteri",
-        "opposition", "pembangkang", "coalition", "pakatan", "barisan",
         "umno", "pas ", "pkr", "dap", "bersatu", "amanah", "gps ",
+        # High-level institutions and positions
+        "parliament", "parlimen", "senate", "senator",
+        "prime minister", "perdana menteri", "pm ", "president", "presiden",
+        "mps", "ahli parlimen", "wakil rakyat",
+        # Laws and constitution
         "law", "act", "bill", "rang undang-undang", "constitution", "perlembagaan",
-        "policy", "dasar", "ordinance", "regulation", "enactment",
-        "royal decree", "agong", "yang di-pertuan agong", "sultan",
+        # Anti-corruption / major scandals
         "macc", "sprm", "anti-corruption", "rasuah",
         "shafee", "najib", "jho low", "1mdb"
     ]
