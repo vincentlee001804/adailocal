@@ -2356,6 +2356,10 @@ def main():
                 else:
                     category = classify(it["title"], summary)
                     title = f"【{category}】{it['title']}"
+
+                # Keep the item title in sync with the final title we actually send,
+                # so logs, Feishu card and Bitable all use the same category label.
+                it["title"] = title
                 
                 # No extra required keyword; use the generated title as-is
                 
