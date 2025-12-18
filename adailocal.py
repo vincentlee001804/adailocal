@@ -2403,7 +2403,7 @@ def main():
                         "received_at": received_at_timestamp,
                         "source_feed": it.get("source", ""),
                         "hash": _key(it["url"], it["title"]),
-                        "is_duplicate": False,
+                        "is_duplicate": "False",  # Text field expects string, not boolean
                         "summary": summary
                     }
                     maybe_log_to_bitable(bitable_fields)
