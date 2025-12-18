@@ -2474,15 +2474,15 @@ def main():
                     else:
                         url_link_obj = None
                     
-                    # Map Chinese category to English Bitable category
-                    bitable_category = map_category_to_bitable(category)
-                    
                     bitable_fields = {
                         "title": title,
                         "url": url_link_obj,  # Link field must be object, not string
                         "media": source_name,
                         "brand": brand_label,
-                        "category": bitable_category,  # Use mapped news category, not brand category
+                        # Use the same Chinese category as in the title (科技/经济/灾难/政治/综合等)
+                        # so Feishu card and Bitable stay in sync. Make sure the Bitable field
+                        # allows these options (single-select) or is a text field.
+                        "category": category,
                         "published_at": published_at_timestamp if published_at_timestamp else None,
                         "received_at": received_at_timestamp,
                         "source_feed": it.get("source", ""),
