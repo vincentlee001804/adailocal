@@ -1299,6 +1299,104 @@ def gemini_summarize_content(title, article_content):
         # Fallback to simple truncation
         return f"【科技】{title}", (article_content[:500] + "..." if len(article_content) > 500 else article_content)
 
+def _mimo_api_request_with_retry(url, headers, payload, max_retries=5, initial_delay=1):
+    """Make MiMo API request with exponential backoff retry logic for rate limiting (429 errors)
+    
+    Args:
+        url: API endpoint URL
+        headers: Request headers
+        payload: Request payload
+        max_retries: Maximum number of retry attempts (default: 5)
+        initial_delay: Initial delay in seconds before first retry (default: 1)
+    
+    Returns:
+        Response object from successful request
+    
+    Raises:
+        Exception: If all retries are exhausted or non-retryable error occurs
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt == 0:
+                print(f"  📤 Sending request to MiMo API...")
+            else:
+                print(f"  📤 Retrying MiMo API request... (attempt {attempt + 1}/{max_retries})")
+            
+            r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+            
+            # Check for rate limit (429) error before raising
+            if r.status_code == 429:
+                # Try to get Retry-After header if available
+                retry_after = r.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        wait_time = int(retry_after)
+                        print(f"  ⏳ Rate limit reached (429). Server requested wait time: {wait_time} seconds")
+                    except ValueError:
+                        # If Retry-After is not a number, use exponential backoff
+                        wait_time = initial_delay * (2 ** attempt)
+                        print(f"  ⏳ Rate limit reached (429). Waiting {wait_time} seconds before retry...")
+                else:
+                    # Use exponential backoff: 1s, 2s, 4s, 8s, 16s
+                    wait_time = initial_delay * (2 ** attempt)
+                    print(f"  ⏳ Rate limit reached (429). Waiting {wait_time} seconds before retry...")
+                
+                # If this is not the last attempt, wait and retry
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Last attempt failed, raise the error
+                    r.raise_for_status()
+            
+            # For non-429 errors, raise immediately if status is not OK
+            r.raise_for_status()
+            return r
+            
+        except requests.exceptions.HTTPError as e:
+            # Handle HTTP errors that were raised by raise_for_status()
+            if e.response and e.response.status_code == 429:
+                # 429 error - retry with backoff
+                last_exception = e
+                if attempt < max_retries - 1:
+                    # Calculate wait time
+                    retry_after = e.response.headers.get('Retry-After')
+                    if retry_after:
+                        try:
+                            wait_time = int(retry_after)
+                        except ValueError:
+                            wait_time = initial_delay * (2 ** attempt)
+                    else:
+                        wait_time = initial_delay * (2 ** attempt)
+                    
+                    print(f"  ⏳ Rate limit reached (429). Waiting {wait_time} seconds before retry...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Last attempt failed
+                    raise
+            else:
+                # Non-429 HTTP errors should not be retried
+                raise
+        except requests.exceptions.RequestException as e:
+            # Network errors, timeouts, etc. - retry with exponential backoff
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = initial_delay * (2 ** attempt)
+                print(f"  ⚠️  Request error: {e}. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                raise
+    
+    # If we exhausted all retries, raise the last exception
+    if last_exception:
+        raise last_exception
+    else:
+        raise Exception("Failed to make MiMo API request after all retries")
+
 def mimo_summarize_from_url(title, article_url):
     """Use Xiaomi MiMo LLM to read and summarize the article directly from URL"""
     if not MIMO_AVAILABLE:
@@ -1426,9 +1524,8 @@ def mimo_summarize_from_url(title, article_url):
             "max_tokens": 500
         }
         
-        print(f"  📤 Sending request to MiMo API...")
-        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
-        r.raise_for_status()
+        # Use retry logic with exponential backoff for rate limiting
+        r = _mimo_api_request_with_retry(url, headers, payload)
         data = r.json()
         
         if "choices" not in data or not data["choices"]:
@@ -1550,9 +1647,8 @@ def mimo_summarize_content(title, article_content):
             "max_tokens": 500
         }
         
-        print(f"  📤 Sending request to MiMo API...")
-        r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
-        r.raise_for_status()
+        # Use retry logic with exponential backoff for rate limiting
+        r = _mimo_api_request_with_retry(url, headers, payload)
         data = r.json()
         
         if "choices" not in data or not data["choices"]:
