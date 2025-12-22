@@ -421,6 +421,14 @@ def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
 
+def has_brand_keywords(title):
+    """Check if title contains Xiaomi, REDMI, POCO, or mijia brand keywords (case-insensitive)."""
+    if not title:
+        return False
+    title_lower = title.lower()
+    brand_keywords = ['xiaomi', 'redmi', 'poco', 'mijia']
+    return any(keyword in title_lower for keyword in brand_keywords)
+
 def _extract_source_from_url(url):
     """Extract source name from article URL"""
     try:
@@ -2260,17 +2268,25 @@ def main():
             print(f"=== Starting collection cycle ===")
             items = collect_once()
             print(f"=== Found {len(items)} total items ===")
-            # Sort by priority first, then by published_at (latest first)
+            # Sort by brand keywords first (highest priority), then priority feeds, then by published_at (latest first)
             def _k(it):
+                title = it.get("title", "") or ""
+                has_brand = 1 if has_brand_keywords(title) else 0
                 priority = 1 if it.get("priority") else 0
                 published_at = it.get("published_at") or "1970-01-01T00:00:00"
-                return (priority, published_at)
+                return (has_brand, priority, published_at)
             items.sort(key=_k, reverse=True)
+            
+            # Count brand-related news
+            brand_news_count = sum(1 for it in items if has_brand_keywords(it.get("title", "")))
+            if brand_news_count > 0:
+                print(f"🏷️  Found {brand_news_count} brand-related news items (Xiaomi/REDMI/POCO/mijia) - prioritized!")
             
             # Log the top 10 most recent items for verification
             print(f"=== Top 10 most recent news items ===")
             for i, item in enumerate(items[:10]):
-                print(f"{i+1}. {item['title'][:60]}... (Published: {item.get('published_at', 'No date')})")
+                brand_marker = " [BRAND]" if has_brand_keywords(item.get("title", "")) else ""
+                print(f"{i+1}. {item['title'][:60]}...{brand_marker} (Published: {item.get('published_at', 'No date')})")
             
             # Process items and skip already sent news
             for it in items:
@@ -2278,6 +2294,10 @@ def main():
                 if is_news_already_sent(it['url'], sent_news_urls):
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
                     continue
+
+                # Log brand-related news priority
+                if has_brand_keywords(it.get("title", "")):
+                    print(f"🏷️  Processing brand-related news (priority): {it['title'][:60]}...")
 
                 # For priority sources, also generate Chinese summary via AI (MiMo/Gemini)
                 ai_provider_used = None  # Track which AI provider was used
