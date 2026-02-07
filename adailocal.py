@@ -637,9 +637,15 @@ def read_article_content(url):
             print(f"  ❌ Not HTML content: {content_type}")
             return ""
         
-        # Debug: Check if page has anti-bot protection
+        # Debug: Check if page has anti-bot protection or paywall
         page_text = response.text.lower()
-        if any(phrase in page_text for phrase in ['cloudflare', 'access denied', 'blocked', 'captcha', 'robot', 'bot detection']):
+        anti_bot_phrases = ['cloudflare', 'access denied', 'blocked', 'captcha', 'robot', 'bot detection']
+        paywall_phrases = ['subscribe', 'paywall', 'unlock', 'premium', 'members only', 'sign in to continue']
+        
+        has_anti_bot = any(phrase in page_text for phrase in anti_bot_phrases)
+        has_paywall = any(phrase in page_text for phrase in paywall_phrases)
+        
+        if has_anti_bot:
             print(f"  ⚠️  Possible anti-bot protection detected")
             # Try with different headers
             headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -650,6 +656,9 @@ def read_article_content(url):
             except Exception as e:
                 print(f"  ❌ Retry failed: {e}")
                 return ""
+        
+        if has_paywall:
+            print(f"  🔒 Paywall detected - article content may be limited")
         
         soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -883,9 +892,20 @@ def read_article_content(url):
             print(f"  📄 Content preview: {content[:200]}...")
         else:
             print(f"  ❌ No content extracted from {resolved_url}")
-            print(f"  🔍 Page title: {soup.find('title').get_text() if soup.find('title') else 'No title'}")
+            page_title = soup.find('title').get_text() if soup.find('title') else 'No title'
+            print(f"  🔍 Page title: {page_title}")
             print(f"  🔍 Page has {len(soup.find_all('p'))} paragraphs")
             print(f"  🔍 Page has {len(soup.find_all('article'))} article elements")
+            
+            # Check for common reasons why extraction failed
+            if has_paywall:
+                print(f"  💡 Reason: Paywall detected - article requires subscription")
+            elif 'subscribe' in page_text or 'unlock' in page_text:
+                print(f"  💡 Reason: Likely paywall - subscription required")
+            elif len(soup.find_all('p')) < 3:
+                print(f"  💡 Reason: Page has very few paragraphs - may be paywall or redirect page")
+            else:
+                print(f"  💡 Reason: Content extraction failed - page structure may not match expected format")
         
         return content
         
@@ -2381,8 +2401,19 @@ def main():
                             it["title"] = _apply_chinese_name_map(chinese_title)
                     else:
                         print(f"  ⚠️  Content extraction failed, using RSS content with AI")
-                        # Fallback: Use RSS content but still try AI summarization
-                        rss_content = f"Title: {it['title']}\n\nContent: {it['body']}"
+                        print(f"  📄 RSS body length: {len(it.get('body', '') or '')} characters")
+                        
+                        # Check if RSS body has meaningful content
+                        rss_body = (it.get('body') or '').strip()
+                        if len(rss_body) > 50:
+                            # RSS body has content, use it for AI summarization
+                            rss_content = f"Title: {it['title']}\n\nContent: {rss_body}"
+                            print(f"  ✅ Using RSS body content ({len(rss_body)} chars) for AI summarization")
+                        else:
+                            # RSS body is empty or too short, create a prompt from title only
+                            rss_content = f"Title: {it['title']}\n\nNote: Full article content is not available (may be behind paywall or RSS feed only provides title). Please generate a Chinese title and summary based on the title alone."
+                            print(f"  ⚠️  RSS body too short/empty, generating summary from title only")
+                        
                         try:
                             chinese_title, summary, ai_provider_used = ai_summarize_content(it["title"], rss_content)
                             
@@ -2393,7 +2424,7 @@ def main():
                             
                             if not summary or summary.strip() in ["中文摘要", "摘要", ""]:
                                 print(f"  ⚠️  AI returned empty/placeholder summary, using fallback")
-                                summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                                summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。详细内容请查看原文链接。"
                             
                             if chinese_title:
                                 it["title"] = chinese_title
@@ -2404,7 +2435,7 @@ def main():
                             print(f"  ❌ AI RSS summarization failed: {ai_error}")
                             print(f"  🔄 Using final fallback")
                             chinese_title = f"【科技】{it['title']}"
-                            summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。"
+                            summary = f"根据{it['title']}的报道，这是一条重要的科技新闻。详细内容请查看原文链接。"
                             it["title"] = _apply_chinese_name_map(chinese_title)
                 else:
                     print(f"  📝 Using simple summarization (AI disabled)")
