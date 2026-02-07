@@ -2180,8 +2180,17 @@ def main():
     def is_leader():
         """Check if this machine should be the leader (only one runs at a time)"""
         try:
-            # Create a lock file to ensure only one machine runs
-            lock_file = "/data/leader.lock"
+            # Skip leader election if DISABLE_LEADER_ELECTION is set (useful for local testing)
+            if os.environ.get("DISABLE_LEADER_ELECTION", "0") == "1":
+                return True
+            
+            # Use /data/leader.lock on deployment platforms, or local path for testing
+            if os.path.exists("/data"):
+                lock_file = "/data/leader.lock"
+            else:
+                # For local testing, use a local directory
+                os.makedirs("logs", exist_ok=True)
+                lock_file = "logs/leader.lock"
             
             # Check if lock file exists and is recent
             if os.path.exists(lock_file):
@@ -2223,7 +2232,15 @@ def main():
     def check_leader_health():
         """Check if the current leader is still healthy"""
         try:
-            lock_file = "/data/leader.lock"
+            # Skip if leader election is disabled
+            if os.environ.get("DISABLE_LEADER_ELECTION", "0") == "1":
+                return False
+            
+            # Use /data/leader.lock on deployment platforms, or local path for testing
+            if os.path.exists("/data"):
+                lock_file = "/data/leader.lock"
+            else:
+                lock_file = "logs/leader.lock"
             if not os.path.exists(lock_file):
                 return False
             
@@ -2252,7 +2269,10 @@ def main():
         if not check_leader_health():
             print("  💀 Previous leader appears dead, attempting to take over...")
             try:
-                os.remove("/data/leader.lock")
+                # Try both paths
+                for lock_path in ["/data/leader.lock", "logs/leader.lock"]:
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
             except:
                 pass
             continue
@@ -2629,7 +2649,15 @@ def main():
             break
         # Update leader heartbeat
         try:
-            lock_file = "/data/leader.lock"
+            # Skip if leader election is disabled
+            if os.environ.get("DISABLE_LEADER_ELECTION", "0") == "1":
+                return
+            
+            # Use /data/leader.lock on deployment platforms, or local path for testing
+            if os.path.exists("/data"):
+                lock_file = "/data/leader.lock"
+            else:
+                lock_file = "logs/leader.lock"
             machine_id = os.environ.get('FLY_MACHINE_ID', 'unknown')
             timestamp = str(int(time.time()))
             with open(lock_file, 'w') as f:
