@@ -1159,22 +1159,24 @@ def gemini_summarize_from_url(title, article_url):
         products_context = f"Products mentioned in source: {', '.join(mentioned_products)}" if mentioned_products else "No specific products mentioned"
         brands_context = f"Brands mentioned in source: {', '.join(mentioned_brands)}" if mentioned_brands else "No specific brands mentioned"
         
-        # Create Gemini prompt
+        # Create Gemini prompt (aligned with MiMo summary length and style)
         prompt = f"""请阅读以下新闻文章并提供：
 
 1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过50字，简洁明了
+2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-        - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
-- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
+- 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
+- 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
+- 摘要不能只是简单改写标题，必须补充标题中没有的细节（如具体机型、价格、合作方、时间等）
 - 保持专业、清晰的表达
+- **重要：请仔细阅读文章内容，不要只基于标题生成摘要**
 
 文章标题: {title}
-文章内容: {article_content[:2000]}...
+文章内容: {article_content[:5000]}...
 
 来源信息:
 {products_context}
@@ -1246,19 +1248,21 @@ def gemini_summarize_content(title, article_content):
         facts_list = sorted(list(facts.get('raw_tokens', set())))
         facts_block = "\n".join(facts_list[:40])
         
-        # Create Gemini prompt
+        # Create Gemini prompt (aligned with MiMo summary length and style)
         prompt = f"""请分析以下新闻文章并提供：
 
 1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过50字，简洁明了
+2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
-        - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
-- 对中国人名优先使用中文写法（如张庆信、雷军），品牌名、产品名、地名可保留英文
+- 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
+- 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
 - 只使用文章中明确提到的数字和事实
 - 不要添加文章中未提及的产品或信息
+- 摘要不能只是简单改写标题，必须补充标题中没有的细节（如具体机型、价格、合作方、时间等）
 - 保持专业、清晰的表达
+- **重要：请仔细阅读文章内容，不要只基于标题生成摘要**
 
 文章标题: {title}
 
@@ -2559,10 +2563,12 @@ def main():
                 else:
                     content = f"{summary}\n\n来源：[{source_name}]({it['url']})"
                 
-                # Prepare MiMo attribution if MiMo was used (separate from content)
+                # Prepare AI attribution if MiMo or Gemini was used (separate from content)
                 attribution = None
                 if ai_provider_used == "mimo":
                     attribution = "摘要由 [Xiaomi MiMo](https://mimo.xiaomi.com/) LLM 生成"
+                elif ai_provider_used == "gemini":
+                    attribution = "摘要由 Google Gemini LLM 生成"
                 
                 # Brand detection for Xiaomi vs competitors
                 brand = detect_brand(f"{title} {summary} {content}")

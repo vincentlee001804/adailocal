@@ -5,3 +5,4 @@ python-dateutil
 lxml
 sumy
 google-generativeai
+flask
