@@ -2018,6 +2018,21 @@ def ai_summarize(title, body, sentences=3):
         # Fallback to simple heuristic summary if NLTK/sumy unavailable
         return summarize(title, body)
 
+def is_malaysiakini_snapshot(source_name, feed_url, title, desc):
+    """Return True when an item is a Malaysiakini SNAPSHOT post."""
+    source_text = f"{source_name} {feed_url}".lower()
+    if "malaysiakini" not in source_text:
+        return False
+
+    content_text = f"{title or ''} {desc or ''}".lower()
+    snapshot_markers = [
+        "kini snapshot",
+        "snapshot |",
+        "| snapshot",
+        " snapshot "
+    ]
+    return any(marker in content_text for marker in snapshot_markers)
+
 def collect_once():
     items = []
     # Process priority feeds first, then the rest
@@ -2069,6 +2084,11 @@ def collect_once():
                 link = (e.get("link") or "").strip()
                 title = (e.get("title") or "").strip()
                 if not title: continue
+                desc = e.get("summary") or e.get("description") or ""
+
+                if is_malaysiakini_snapshot(source_name, feed_url, title, desc):
+                    print(f"  ⏭️  Skipping Malaysiakini SNAPSHOT: {title[:60]}...")
+                    continue
                 
                 # Get publication date first
                 pub = e.get("published") or e.get("updated") or ""
@@ -2091,7 +2111,6 @@ def collect_once():
                     continue
                 
                 # Get description for processing
-                desc = e.get("summary") or e.get("description") or ""
                 body = _clean(desc)
                 
                 print(f"  ✅ News found: {title[:50]}...")
