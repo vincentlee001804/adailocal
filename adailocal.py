@@ -43,7 +43,7 @@ except Exception as e:
 # Xiaomi MiMo LLM API Configuration
 MIMO_API_KEY = os.getenv("MIMO_API_KEY", "").strip()
 MIMO_API_BASE = os.getenv("MIMO_API_BASE", "https://api.xiaomimimo.com/v1").strip()
-MIMO_MODEL = os.getenv("MIMO_MODEL", "mimo-v2-flash").strip()
+MIMO_MODEL = os.getenv("MIMO_MODEL", "mimo-v2-pro").strip()
 MIMO_AVAILABLE = bool(MIMO_API_KEY)
 if MIMO_AVAILABLE:
     print("✅ Xiaomi MiMo LLM API configured successfully")
