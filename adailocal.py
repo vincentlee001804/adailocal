@@ -1773,6 +1773,116 @@ def ai_summarize_content(title, article_content):
     
     raise Exception("Neither MiMo nor Gemini available")
 
+def _extract_title_headline_for_lang_check(title: str) -> str:
+    """Part after 【分类】; used so a Chinese tag does not hide an English headline."""
+    if not (title or "").strip():
+        return ""
+    t = title.strip()
+    if "【" in t and "】" in t:
+        idx = t.find("】")
+        return t[idx + 1 :].strip()
+    return t
+
+def _title_headline_is_mostly_english(title: str) -> bool:
+    h = _extract_title_headline_for_lang_check(title)
+    if not h:
+        return False
+    if any("\u4e00" <= ch <= "\u9fff" for ch in h):
+        return False
+    return _is_mostly_english(h)
+
+def _parse_title_only_from_llm_response(content: str) -> str:
+    for line in (content or "").split("\n"):
+        line = line.strip()
+        if line.startswith("标题:"):
+            return line.replace("标题:", "").strip()
+    first = (content or "").strip().split("\n")[0].strip()
+    return first
+
+def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: str, article_excerpt: str | None):
+    if not MIMO_AVAILABLE:
+        raise Exception("MiMo API not available")
+    excerpt_block = ""
+    if article_excerpt and len(article_excerpt.strip()) > 80:
+        excerpt_block = f"\n文章摘录（供核对事实，请优先与摘要一致）：\n{article_excerpt.strip()[:4000]}\n"
+    prompt = f"""先前生成的新闻标题中，【分类】后的主标题仍是英文。请根据下面已写好的中文摘要{('与文章摘录' if excerpt_block else '')}，只重新写一条中文标题。
+
+要求：
+- 只输出一行，格式：标题: 【分类】简体中文标题
+- 【】内分类必须是：科技、娱乐、经济、体育、灾难、政治、综合 之一
+- 标题主文用简体中文；人名、品牌、地名可保留英文或马来文原文
+- 不要输出摘要、不要解释、不要其它行
+
+当前有问题的标题：{reference_title}
+
+中文摘要：
+{chinese_summary}
+{excerpt_block}"""
+    url = f"{MIMO_API_BASE}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {MIMO_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MIMO_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.35,
+        "max_tokens": 220,
+    }
+    r = _mimo_api_request_with_retry(url, headers, payload)
+    data = r.json()
+    if "choices" not in data or not data["choices"]:
+        raise Exception("Empty or invalid response from MiMo API")
+    raw = data["choices"][0]["message"]["content"].strip()
+    return _parse_title_only_from_llm_response(raw)
+
+def gemini_regenerate_chinese_title_only(reference_title: str, chinese_summary: str, article_excerpt: str | None):
+    if not GEMINI_AVAILABLE:
+        raise Exception("Gemini API not available")
+    excerpt_block = ""
+    if article_excerpt and len(article_excerpt.strip()) > 80:
+        excerpt_block = f"\n文章摘录（供核对事实，请优先与摘要一致）：\n{article_excerpt.strip()[:4000]}\n"
+    prompt = f"""先前生成的新闻标题中，【分类】后的主标题仍是英文。请根据下面已写好的中文摘要{('与文章摘录' if excerpt_block else '')}，只重新写一条中文标题。
+
+要求：
+- 只输出一行，格式：标题: 【分类】简体中文标题
+- 【】内分类必须是：科技、娱乐、经济、体育、灾难、政治、综合 之一
+- 标题主文用简体中文；人名、品牌、地名可保留英文或马来文原文
+- 不要输出摘要、不要解释、不要其它行
+
+当前有问题的标题：{reference_title}
+
+中文摘要：
+{chinese_summary}
+{excerpt_block}"""
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    response = model.generate_content(prompt)
+    if not response.text:
+        raise Exception("Empty response from Gemini")
+    return _parse_title_only_from_llm_response(response.text.strip())
+
+def ai_regenerate_chinese_title_only(reference_title: str, chinese_summary: str, article_excerpt: str | None) -> str:
+    if MIMO_AVAILABLE:
+        try:
+            return mimo_regenerate_chinese_title_only(reference_title, chinese_summary, article_excerpt)
+        except Exception as e:
+            print(f"  ⚠️  MiMo title regeneration failed, trying Gemini: {e}")
+    if GEMINI_AVAILABLE:
+        return gemini_regenerate_chinese_title_only(reference_title, chinese_summary, article_excerpt)
+    raise Exception("Neither MiMo nor Gemini available for title regeneration")
+
+def _article_excerpt_for_title_regen(it: dict) -> str | None:
+    t = it.get("_fetched_article_text")
+    if isinstance(t, str) and len(t.strip()) > 120:
+        return t.strip()[:4500]
+    try:
+        c = read_article_content(it["url"])
+        if c and len((c or "").strip()) > 120:
+            return c.strip()[:4500]
+    except Exception:
+        pass
+    return None
+
 def _is_mostly_english(text: str) -> bool:
     try:
         if not text:
@@ -2390,6 +2500,7 @@ def main():
                     
                     # Extract content from the actual source URL (not Google News)
                     article_content = read_article_content(it['url'])
+                    it["_fetched_article_text"] = article_content if (article_content and len(article_content) > 100) else None
                     
                     if article_content and len(article_content) > 100:
                         print(f"  📖 Article content extracted: {len(article_content)} characters")
@@ -2431,10 +2542,12 @@ def main():
                         if len(rss_body) > 50:
                             # RSS body has content, use it for AI summarization
                             rss_content = f"Title: {it['title']}\n\nContent: {rss_body}"
+                            it["_fetched_article_text"] = rss_body
                             print(f"  ✅ Using RSS body content ({len(rss_body)} chars) for AI summarization")
                         else:
                             # RSS body is empty or too short, create a prompt from title only
                             rss_content = f"Title: {it['title']}\n\nNote: Full article content is not available (may be behind paywall or RSS feed only provides title). Please generate a Chinese title and summary based on the title alone."
+                            it["_fetched_article_text"] = None
                             print(f"  ⚠️  RSS body too short/empty, generating summary from title only")
                         
                         try:
@@ -2469,7 +2582,7 @@ def main():
                     try:
                         print(f"  🔁 Summary looks English; regenerating with AI in Chinese")
                         chinese_title, cn_summary, ai_provider_used = ai_summarize_from_url(it["title"], it['url'])
-                        if chinese_title and not it["title"].startswith("【"):
+                        if chinese_title:
                             it["title"] = chinese_title
                         if cn_summary:
                             summary = cn_summary
@@ -2480,6 +2593,21 @@ def main():
                 # Apply Chinese name mapping to any remaining English-name instances
                 summary = _apply_chinese_name_map(summary)
                 it["title"] = _apply_chinese_name_map(it["title"])
+
+                if (
+                    use_ai
+                    and summary
+                    and not _is_mostly_english(summary)
+                    and _title_headline_is_mostly_english(it["title"])
+                ):
+                    try:
+                        print(f"  🔁 Title headline still English (after Chinese summary); regenerating title via LLM")
+                        excerpt = _article_excerpt_for_title_regen(it)
+                        regen_title = ai_regenerate_chinese_title_only(it["title"], summary, excerpt)
+                        if regen_title and regen_title not in ("【分类】中文标题", "中文标题"):
+                            it["title"] = _apply_chinese_name_map(regen_title)
+                    except Exception as _e:
+                        print(f"  ⚠️ Title regeneration failed: {_e}")
 
                 if not summary or summary.strip() in ["中文摘要", "摘要", "", "中文标题", "【分类】中文标题"]:
                     print(f"  🚨 CRITICAL: Empty/placeholder content detected, using emergency fallback")
