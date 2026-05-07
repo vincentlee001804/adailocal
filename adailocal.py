@@ -421,6 +421,169 @@ def _norm(u): return (u or "").split("?")[0]
 def _key(link, title): return hashlib.sha1(((_norm(link) or title) or "").encode("utf-8","ignore")).hexdigest()
 def _clean(html): return " ".join(BeautifulSoup(html or "", "lxml").get_text(" ").split())
 
+# ---------------------------------------------------------------------------
+# Story-level (cross-source) deduplication
+# ---------------------------------------------------------------------------
+# Catches the case where multiple media outlets publish the same story under
+# different URLs (e.g. The Star + Lowyat + Malaysiakini all covering the same
+# Xiaomi launch). We compare normalized titles using character-bigram Jaccard,
+# which works for both Chinese and English without external NLP deps.
+
+# Persistent log of stories that have been pushed (for cross-run dedup).
+SENT_STORIES_FILE = os.environ.get("SENT_STORIES_PATH", "logs/sent_stories.jsonl").strip() or "logs/sent_stories.jsonl"
+
+# How long a sent story keeps blocking similar stories (hours).
+try:
+    DEDUP_WINDOW_HOURS = int(os.environ.get("DEDUP_WINDOW_HOURS", "48"))
+except Exception:
+    DEDUP_WINDOW_HOURS = 48
+
+# Title-bigram Jaccard threshold above which two titles are treated as the same story.
+try:
+    SIM_TITLE_THRESHOLD = float(os.environ.get("SIM_TITLE_THRESHOLD", "0.60"))
+except Exception:
+    SIM_TITLE_THRESHOLD = 0.60
+
+# Below this normalized-title length we only do exact-key match (similarity is
+# unreliable on very short titles because a single overlapping bigram can spike Jaccard).
+try:
+    MIN_TITLE_LEN_FOR_SIM = int(os.environ.get("MIN_TITLE_LEN_FOR_SIM", "8"))
+except Exception:
+    MIN_TITLE_LEN_FOR_SIM = 8
+
+
+def _norm_title_key(title: str) -> str:
+    """Strict normalized title for exact-match fast path. Lowercase, strip
+    whitespace + punctuation, keep CJK + alnum."""
+    if not title:
+        return ""
+    return re.sub(r'[\s\W_]+', '', title.lower(), flags=re.UNICODE)
+
+
+def _story_signature(title: str):
+    """Language-agnostic story signature: char bigrams of the normalized title.
+    Returns a frozenset for cheap Jaccard math."""
+    t = _norm_title_key(title)
+    if len(t) < 2:
+        return frozenset({t}) if t else frozenset()
+    return frozenset(t[i:i+2] for i in range(len(t) - 1))
+
+
+def _jaccard(a, b) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    if inter == 0:
+        return 0.0
+    return inter / len(a | b)
+
+
+def load_sent_stories():
+    """Load stories sent within the dedup window. Returns a list of dicts with
+    a precomputed _sig field for fast similarity checks."""
+    cutoff = time.time() - DEDUP_WINDOW_HOURS * 3600
+    out = []
+    if not os.path.exists(SENT_STORIES_FILE):
+        print(f"No sent-stories file yet at {SENT_STORIES_FILE}")
+        return out
+    try:
+        with open(SENT_STORIES_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if rec.get("ts", 0) < cutoff:
+                    continue
+                rec["_sig"] = _story_signature(rec.get("title", ""))
+                out.append(rec)
+        print(f"Loaded {len(out)} sent stories within last {DEDUP_WINDOW_HOURS}h (window dedup)")
+    except Exception as e:
+        print(f"Error loading sent stories: {e}")
+    return out
+
+
+def append_sent_story(url: str, title: str, source: str):
+    """Append a single sent story to the JSONL log."""
+    try:
+        parent = os.path.dirname(SENT_STORIES_FILE)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+        rec = {
+            "ts": int(time.time()),
+            "url": url or "",
+            "title": title or "",
+            "title_key": _norm_title_key(title or ""),
+            "source": source or "",
+        }
+        with open(SENT_STORIES_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"Error appending sent story: {e}")
+
+
+def is_similar_to_sent(title: str, sent_stories):
+    """Return the matching sent record if a similar story was already pushed,
+    else None. Uses exact title_key fast path then bigram Jaccard."""
+    if not title or not sent_stories:
+        return None
+    key = _norm_title_key(title)
+    if not key:
+        return None
+    sig = _story_signature(title)
+    short_title = len(key) < MIN_TITLE_LEN_FOR_SIM
+    for rec in sent_stories:
+        if key and rec.get("title_key") == key:
+            return rec
+        if short_title:
+            continue
+        rec_sig = rec.get("_sig")
+        if not rec_sig:
+            continue
+        if len(rec.get("title_key") or "") < MIN_TITLE_LEN_FOR_SIM:
+            continue
+        if _jaccard(sig, rec_sig) >= SIM_TITLE_THRESHOLD:
+            return rec
+    return None
+
+
+def dedup_batch(items):
+    """Collapse near-duplicate items within a single fetch round so we don't
+    queue 5 versions of the same story for the next 5 cycles. Keeps the first
+    occurrence (which is already sorted to be the highest-priority one)."""
+    if not items:
+        return items
+    kept = []
+    sigs = []  # list of (title_key, _sig) tuples for items we kept
+    dropped = 0
+    for it in items:
+        title = it.get("title", "") or ""
+        key = _norm_title_key(title)
+        if not key:
+            kept.append(it)
+            continue
+        sig = _story_signature(title)
+        is_dup = False
+        for k_seen, sig_seen in sigs:
+            if key == k_seen:
+                is_dup = True
+                break
+            if len(key) >= MIN_TITLE_LEN_FOR_SIM and len(k_seen) >= MIN_TITLE_LEN_FOR_SIM:
+                if _jaccard(sig, sig_seen) >= SIM_TITLE_THRESHOLD:
+                    is_dup = True
+                    break
+        if is_dup:
+            dropped += 1
+            continue
+        sigs.append((key, sig))
+        kept.append(it)
+    if dropped:
+        print(f"🧹 In-batch similarity dedup removed {dropped} item(s); {len(kept)} remain")
+    return kept
+
 def has_brand_keywords(title):
     """Check if title contains Xiaomi, REDMI, POCO, or mijia brand keywords (case-insensitive)."""
     if not title:
@@ -2328,6 +2491,9 @@ def main():
 
     # Load previously sent news for persistent deduplication
     sent_news_urls = load_sent_news()
+    # Load story-level dedup index (titles of stories pushed within DEDUP_WINDOW_HOURS)
+    sent_stories = load_sent_stories()
+    print(f"🧠 Story-similarity dedup: threshold={SIM_TITLE_THRESHOLD}, window={DEDUP_WINDOW_HOURS}h")
     
     # Leader election mechanism to prevent duplicate news from multiple machines
     def is_leader():
@@ -2449,6 +2615,9 @@ def main():
                 published_at = it.get("published_at") or "1970-01-01T00:00:00"
                 return (has_brand, priority, published_at)
             items.sort(key=_k, reverse=True)
+            # Collapse near-duplicate items within this fetch round so we don't queue
+            # 5 versions of the same story for the next 5 cycles.
+            items = dedup_batch(items)
             
             # Count brand-related news
             brand_news_count = sum(1 for it in items if has_brand_keywords(it.get("title", "")))
@@ -2466,6 +2635,18 @@ def main():
                 # Check if this news has already been sent
                 if is_news_already_sent(it['url'], sent_news_urls):
                     print(f"⏭️  Skipping already sent news: {it['title'][:50]}...")
+                    continue
+
+                # Cross-source story-level dedup: skip if a similar story was
+                # already pushed within the dedup window, even if the URL differs.
+                sim_match = is_similar_to_sent(it.get('title', ''), sent_stories)
+                if sim_match:
+                    print(
+                        f"⏭️  Skipping similar story (already pushed): "
+                        f"{(it.get('title') or '')[:50]}  ⟵  "
+                        f"{(sim_match.get('title') or '')[:50]} "
+                        f"({sim_match.get('source','')})"
+                    )
                     continue
 
                 # Log brand-related news priority
@@ -2815,6 +2996,21 @@ def main():
                     # Mark this URL as sent (both in-memory and persistent)
                     SENT_URLS.add(it['url'])
                     sent_news_urls.add(it['url'])
+                    # Record this story for cross-source similarity dedup. We do
+                    # this after a successful send so that failed pushes can be
+                    # retried with a different source on the next cycle.
+                    try:
+                        append_sent_story(it.get('url', ''), it.get('title', ''), it.get('source', ''))
+                        sent_stories.append({
+                            "ts": int(time.time()),
+                            "url": it.get('url', ''),
+                            "title": it.get('title', ''),
+                            "title_key": _norm_title_key(it.get('title', '')),
+                            "source": it.get('source', ''),
+                            "_sig": _story_signature(it.get('title', '')),
+                        })
+                    except Exception as e:
+                        print(f"  ⚠️  Failed to record sent story for similarity dedup: {e}")
                     print(f"✅ Sent news: {it['title'][:50]}...")
                     sent += 1
                 else:
