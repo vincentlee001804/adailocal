@@ -2076,7 +2076,8 @@ def _contains_kw(text_lc: str, keywords):
         k = kw.lower()
         # Use word-boundary matching for plain latin words to avoid 'goal' matching 'global'
         if all(('a' <= ch <= 'z') or ch == ' ' for ch in k) and len(k) >= 3:
-            pattern = r"\\b" + re.escape(k) + r"\\b"
+            # FIX: use raw string r"\b" (single backslash) for real regex word boundary
+            pattern = r"\b" + re.escape(k) + r"\b"
             if re.search(pattern, text_lc):
                 return True
         else:
@@ -2245,13 +2246,17 @@ def classify(title, text):
         "seni", "painting", "lukisan", "sculpture", "arca", "photography", "fotografi"
     ]
     
-    # Check categories in order of specificity
-    if _contains_kw(t, politics_keywords): return "政治"
-    if _contains_kw(t, economy_keywords): return "经济"
+    # Check categories in order of specificity.
+    # Tech is checked FIRST because tech articles often mention generic words
+    # ("law", "act", "bank", "development") that would otherwise trigger politics/economy.
+    # Disaster and sports are clear-cut and checked early. Politics is last among the
+    # major categories so that ambiguous words don't shadow tech/economy content.
     if _contains_kw(t, disaster_keywords): return "灾害"
     if _contains_kw(t, sports_keywords): return "体育"
     if _contains_kw(t, tech_keywords): return "科技"
     if _contains_kw(t, entertainment_keywords): return "文娱"
+    if _contains_kw(t, economy_keywords): return "经济"
+    if _contains_kw(t, politics_keywords): return "政治"
     return "综合"
 
 def summarize(title, body):
