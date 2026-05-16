@@ -2249,11 +2249,11 @@ def classify(title, text):
     # Check categories in order of specificity.
     # Tech is checked FIRST because tech articles often mention generic words
     # ("law", "act", "bank", "development") that would otherwise trigger politics/economy.
-    # Disaster and sports are clear-cut and checked early. Politics is last among the
+    # Disaster and sports are clear-cut and checked next. Politics is last among the
     # major categories so that ambiguous words don't shadow tech/economy content.
+    if _contains_kw(t, tech_keywords): return "科技"
     if _contains_kw(t, disaster_keywords): return "灾害"
     if _contains_kw(t, sports_keywords): return "体育"
-    if _contains_kw(t, tech_keywords): return "科技"
     if _contains_kw(t, entertainment_keywords): return "文娱"
     if _contains_kw(t, economy_keywords): return "经济"
     if _contains_kw(t, politics_keywords): return "政治"
