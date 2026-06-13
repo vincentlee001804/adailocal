@@ -1716,7 +1716,7 @@ def mimo_summarize_from_url(title, article_url):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 500
+            "max_tokens": 2048
         }
         
         # Use retry logic with exponential backoff for rate limiting
@@ -1839,7 +1839,7 @@ def mimo_summarize_content(title, article_content):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 500
+            "max_tokens": 2048
         }
         
         # Use retry logic with exponential backoff for rate limiting
@@ -1990,7 +1990,7 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
         "model": MIMO_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.35,
-        "max_tokens": 220,
+        "max_tokens": 1024,
     }
     r = _mimo_api_request_with_retry(url, headers, payload)
     data = r.json()

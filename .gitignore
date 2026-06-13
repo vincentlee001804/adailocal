@@ -38,3 +38,9 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets and local config
+.env
+
+# Logs and runtime databases
+logs/
