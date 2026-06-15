@@ -410,28 +410,46 @@ def send_card_via_webhook(webhook_url, title, content, secret=None, attribution=
 	# Always send interactive card so markdown links are clickable
 	card = _build_card(title, content, attribution)
 	payload = { "msg_type": "interactive", "card": card }
-	if secret:
-		ts = str(int(time.time()))
-		sign = _gen_webhook_sign(secret, ts)
-		payload.update({ "timestamp": ts, "sign": sign })
-	r = requests.post(webhook_url, json=payload, timeout=TIMEOUT)
-	print(f"  📡 Webhook response status: {r.status_code}")
-	try:
-		data = r.json()
-		print(f"  📋 Webhook response: {data}")
-		if isinstance(data, dict):
-			code = data.get("code")
-			if code == 0:
-				print(f"  ✅ Webhook success with card: {data}")
+	
+	max_retries = 3
+	initial_delay = 2.0
+	
+	for attempt in range(max_retries):
+		if secret:
+			ts = str(int(time.time()))
+			sign = _gen_webhook_sign(secret, ts)
+			payload.update({ "timestamp": ts, "sign": sign })
+		try:
+			r = requests.post(webhook_url, json=payload, timeout=TIMEOUT)
+			print(f"  📡 Webhook response status: {r.status_code}")
+			
+			data = r.json()
+			print(f"  📋 Webhook response: {data}")
+			if isinstance(data, dict):
+				code = data.get("code")
+				if code == 0:
+					print(f"  ✅ Webhook success with card: {data}")
+					return
+				elif code == 11232:
+					# Frequency limited / rate limit
+					delay = initial_delay * (2 ** attempt)
+					print(f"  ⏳ Feishu rate limit (code 11232) hit. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+					time.sleep(delay)
+					continue
+				else:
+					print(f"  ❌ Webhook error (code {code}): {data.get('msg', 'Unknown error')}")
+					raise Exception(f"Feishu webhook error: {data}")
 			else:
-				print(f"  ❌ Webhook error (code {code}): {data.get('msg', 'Unknown error')}")
-				raise Exception(f"Feishu webhook error: {data}")
-		else:
-			print(f"  ✅ Webhook success with card: {data}")
-	except Exception as e:
-		print(f"  ❌ Webhook error: {r.status_code} - {r.text[:200]}...")
-		print(f"  📄 Raw response: {r.text}")
-		raise e
+				print(f"  ✅ Webhook success with card: {data}")
+				return
+		except Exception as e:
+			if attempt == max_retries - 1:
+				print(f"  ❌ Webhook send failed after {max_retries} attempts.")
+				raise e
+			else:
+				delay = initial_delay * (2 ** attempt)
+				print(f"  ⚠️ Request error: {e}. Retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+				time.sleep(delay)
 
 # --- Feishu Bitable helpers ---
 # Env vars required:
