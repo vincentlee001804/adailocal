@@ -15,7 +15,7 @@ try:
 except ImportError:
     # If python-dotenv is not installed, try to load .env manually
     try:
-        with open('.env', 'r') as f:
+        with open('.env', 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
@@ -23,6 +23,78 @@ except ImportError:
                     os.environ[key.strip()] = value.strip()
     except FileNotFoundError:
         pass  # .env file doesn't exist, use system environment variables
+
+# --- LOGGING CONFIGURATION & INTERCEPTION ---
+import logging
+from logging.handlers import RotatingFileHandler
+
+os.makedirs("logs", exist_ok=True)
+logger = logging.getLogger("adailocal")
+
+# Read log level from environment variables (default to INFO)
+log_level_env = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_env, logging.INFO)
+logger.setLevel(logging.DEBUG)  # Capture everything, filter at handlers
+
+# Unified log formatter
+formatter = logging.Formatter(
+    '[%(asctime)s] [%(levelname)s] %(message)s', 
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Console Handler (respects user configured level)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(log_level)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# File Handler (always records everything at DEBUG level for auditing, rotates at 5MB)
+file_handler = RotatingFileHandler(
+    "logs/adailocal.log", 
+    maxBytes=5 * 1024 * 1024, 
+    backupCount=5, 
+    encoding="utf-8"
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Intercept print
+def print_log(*args, sep=" ", end="\n", file=None, flush=False):
+    msg = sep.join(str(arg) for arg in args)
+    lower_msg = msg.lower()
+    
+    # Classify messages into DEBUG, WARNING, or INFO
+    if (
+        "raw date:" in lower_msg 
+        or "parsed date:" in lower_msg 
+        or "checking:" in lower_msg
+        or "skipping old news:" in lower_msg
+        or "date parsing failed" in lower_msg
+        or "no date found" in lower_msg
+        or "date parsing error" in lower_msg
+        or "cutoff:" in lower_msg
+        or "resolving google news" in lower_msg
+        or "resolved google news url" in lower_msg
+        or "checking for local feed lock" in lower_msg
+        or "google news redirect bypass" in lower_msg
+        or "timeout for " in lower_msg
+        or "request failed for " in lower_msg
+        or "feed parse warning" in lower_msg
+        or "bozo exception" in lower_msg
+        or "found 0 new items" in lower_msg
+        or "http 404 for" in lower_msg
+        or "loading sent news" in lower_msg
+        or "previously sent news urls" in lower_msg
+    ):
+        logger.debug(msg)
+    elif "failed" in lower_msg or "error" in lower_msg or "❌" in msg or "⚠️" in msg:
+        logger.warning(msg)
+    else:
+        logger.info(msg)
+
+# Override built-in print
+print = print_log
 
 # Google Gemini API Configuration (no default hardcoded key)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
@@ -1675,11 +1747,10 @@ def mimo_summarize_from_url(title, article_url):
         else:
             print(f"  📝 Content preview (first 300 chars): {article_content[:300]}...")
         
-        # Create MiMo prompt (same format as Gemini)
-        prompt = f"""请阅读以下新闻文章并提供：
-
-1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
+        # Create MiMo prompt (JSON format)
+        prompt = f"""请阅读以下新闻文章并输出 JSON 格式的结果，包含以下字段：
+1. "title": 中文标题（带分类标签），格式：【分类】中文标题
+2. "summary": 中文摘要，不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
@@ -1700,9 +1771,11 @@ def mimo_summarize_from_url(title, article_url):
 
 提取的事实: {facts_block}
 
-请按以下格式回复：
-标题: 【分类】中文标题
-摘要: 中文摘要"""
+请以 JSON 格式输出，例如：
+{{
+  "title": "【分类】中文标题",
+  "summary": "中文摘要"
+}}"""
 
         # Call MiMo API (OpenAI-compatible chat completions)
         url = f"{MIMO_API_BASE}/chat/completions"
@@ -1716,7 +1789,8 @@ def mimo_summarize_from_url(title, article_url):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 2048
+            "max_tokens": 2048,
+            "response_format": {"type": "json_object"}
         }
         
         # Use retry logic with exponential backoff for rate limiting
@@ -1729,26 +1803,53 @@ def mimo_summarize_from_url(title, article_url):
         content = data["choices"][0]["message"]["content"].strip()
         print(f"  📡 MiMo API response received: {len(content)} characters")
         
-        # Parse the response (same as Gemini)
-        lines = content.split('\n')
+        # Parse the JSON response
         chinese_title = ""
         summary = ""
         
-        for line in lines:
-            line = line.strip()
-            if line.startswith('标题:'):
-                chinese_title = line.replace('标题:', '').strip()
-            elif line.startswith('摘要:'):
-                summary = line.replace('摘要:', '').strip()
-            elif not chinese_title and line and not line.startswith('摘要:'):
-                chinese_title = line
-            elif chinese_title and line and not line.startswith('标题:'):
-                if summary:
-                    summary += " " + line
-                else:
-                    summary = line
+        # Clean markdown code blocks if present
+        clean_content = content
+        if clean_content.startswith("```"):
+            lines = clean_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_content = "\n".join(lines).strip()
+            
+        try:
+            import json
+            parsed = json.loads(clean_content)
+            chinese_title = parsed.get("title", "").strip()
+            summary = parsed.get("summary", "").strip()
+        except Exception as json_err:
+            print(f"  ⚠️ JSON parsing failed: {json_err}")
+            
+        # Fallback to legacy parsing if JSON parsing failed or fields are empty
+        if not chinese_title or not summary:
+            print(f"  ⚠️ Attempting text fallback parsing...")
+            lines = content.split('\n')
+            chinese_title = ""
+            summary = ""
+            for line in lines:
+                line = line.strip()
+                if line.startswith('标题:'):
+                    chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('标题：'):
+                    chinese_title = line.replace('标题：', '').strip()
+                elif line.startswith('摘要:'):
+                    summary = line.replace('摘要:', '').strip()
+                elif line.startswith('摘要：'):
+                    summary = line.replace('摘要：', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
+                    chinese_title = line
+                elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
+                    if summary:
+                        summary += " " + line
+                    else:
+                        summary = line
         
-        # Fallback if parsing failed
+        # Fallback if parsing failed entirely
         if not chinese_title or not summary:
             print(f"  ⚠️  Could not parse title/summary, using full content")
             chinese_title = f"【科技】{title}"
@@ -1800,11 +1901,10 @@ def mimo_summarize_content(title, article_content):
         facts_list = sorted(list(facts.get('raw_tokens', set())))
         facts_block = "\n".join(facts_list[:40])
         
-        # Create MiMo prompt
-        prompt = f"""请分析以下新闻文章并提供：
-
-1. **中文标题（带分类标签）** - 格式：【分类】中文标题
-2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
+        # Create MiMo prompt (JSON format)
+        prompt = f"""请分析以下新闻文章并输出 JSON 格式的结果，包含以下字段：
+1. "title": 中文标题（带分类标签），格式：【分类】中文标题
+2. "summary": 中文摘要，不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
 - 标题和摘要必须用简体中文（不要使用繁体中文）
@@ -1823,9 +1923,11 @@ def mimo_summarize_content(title, article_content):
 
 提取的事实: {facts_block}
 
-请按以下格式回复：
-标题: 【分类】中文标题
-摘要: 中文摘要"""
+请以 JSON 格式输出，例如：
+{{
+  "title": "【分类】中文标题",
+  "summary": "中文摘要"
+}}"""
 
         # Call MiMo API (OpenAI-compatible chat completions)
         url = f"{MIMO_API_BASE}/chat/completions"
@@ -1839,7 +1941,8 @@ def mimo_summarize_content(title, article_content):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 2048
+            "max_tokens": 2048,
+            "response_format": {"type": "json_object"}
         }
         
         # Use retry logic with exponential backoff for rate limiting
@@ -1852,44 +1955,62 @@ def mimo_summarize_content(title, article_content):
         content = data["choices"][0]["message"]["content"].strip()
         print(f"  📡 MiMo API response received: {len(content)} characters")
         
-        # Parse the response to extract title and summary
+        # Parse the JSON response
+        chinese_title = ""
+        summary = ""
+        
+        # Clean markdown code blocks if present
+        clean_content = content
+        if clean_content.startswith("```"):
+            lines = clean_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_content = "\n".join(lines).strip()
+            
         try:
+            import json
+            parsed = json.loads(clean_content)
+            chinese_title = parsed.get("title", "").strip()
+            summary = parsed.get("summary", "").strip()
+        except Exception as json_err:
+            print(f"  ⚠️ JSON parsing failed: {json_err}")
+            
+        # Fallback to legacy parsing if JSON parsing failed or fields are empty
+        if not chinese_title or not summary:
+            print(f"  ⚠️ Attempting text fallback parsing...")
             lines = content.split('\n')
             chinese_title = ""
             summary = ""
-            
             for line in lines:
                 line = line.strip()
                 if line.startswith('标题:'):
                     chinese_title = line.replace('标题:', '').strip()
+                elif line.startswith('标题：'):
+                    chinese_title = line.replace('标题：', '').strip()
                 elif line.startswith('摘要:'):
                     summary = line.replace('摘要:', '').strip()
-                elif not chinese_title and line and not line.startswith('摘要:'):
-                    # If no title found yet, this might be the title
+                elif line.startswith('摘要：'):
+                    summary = line.replace('摘要：', '').strip()
+                elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
                     chinese_title = line
-                elif chinese_title and line and not line.startswith('标题:'):
-                    # If we have a title, this is part of the summary
+                elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
                     if summary:
                         summary += " " + line
                     else:
                         summary = line
             
-            # If we couldn't parse properly, use the whole content as summary
-            if not chinese_title or not summary:
-                print(f"  ⚠️  Could not parse title/summary, using full content")
-                chinese_title = title  # Fallback to original title
-                summary = content
-            
-            print(f"  ✅ MiMo Chinese title: {chinese_title}")
-            print(f"  ✅ MiMo summary generated: {len(summary)} characters")
+        # Fallback if parsing failed entirely
+        if not chinese_title or not summary:
+            print(f"  ⚠️  Could not parse title/summary, using full content")
+            chinese_title = title  # Fallback to original title
+            summary = content
+        
+        print(f"  ✅ MiMo Chinese title: {chinese_title}")
+        print(f"  ✅ MiMo summary generated: {len(summary)} characters")
 
-            return chinese_title, summary
-            
-        except Exception as e:
-            print(f"  ⚠️  Error parsing response: {e}")
-            print(f"  📄 Raw content: {content[:200]}...")
-            # Re-raise exception so fallback to Gemini can work
-            raise
+        return chinese_title, summary
         
     except Exception as e:
         print(f"  ❌ MiMo API error: {e}")
