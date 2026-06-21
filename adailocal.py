@@ -1816,67 +1816,78 @@ def mimo_summarize_from_url(title, article_url):
         if not MIMO_DEEP_THINKING:
             payload["thinking"] = {"type": "disabled"}
         
-        # Use retry logic with exponential backoff for rate limiting
-        r = _mimo_api_request_with_retry(url, headers, payload)
-        data = r.json()
-        
-        if "choices" not in data or not data["choices"]:
-            raise Exception("Empty or invalid response from MiMo API")
-        
-        content = data["choices"][0]["message"]["content"].strip()
-        print(f"  📡 MiMo API response received: {len(content)} characters")
-        
-        # Parse the JSON response
         chinese_title = ""
         summary = ""
+        max_attempts = 2
         
-        # Clean markdown code blocks if present
-        clean_content = content
-        if clean_content.startswith("```"):
-            lines = clean_content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            clean_content = "\n".join(lines).strip()
-            
-        try:
-            import json
-            parsed = json.loads(clean_content)
-            chinese_title = parsed.get("title", "").strip()
-            summary = parsed.get("summary", "").strip()
-        except Exception as json_err:
-            print(f"  ⚠️ JSON parsing failed: {json_err}")
-            
-        # Fallback to legacy parsing if JSON parsing failed or fields are empty
-        if not chinese_title or not summary:
-            print(f"  ⚠️ Attempting text fallback parsing...")
-            lines = content.split('\n')
-            chinese_title = ""
-            summary = ""
-            for line in lines:
-                line = line.strip()
-                if line.startswith('标题:'):
-                    chinese_title = line.replace('标题:', '').strip()
-                elif line.startswith('标题：'):
-                    chinese_title = line.replace('标题：', '').strip()
-                elif line.startswith('摘要:'):
-                    summary = line.replace('摘要:', '').strip()
-                elif line.startswith('摘要：'):
-                    summary = line.replace('摘要：', '').strip()
-                elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
-                    chinese_title = line
-                elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
-                    if summary:
-                        summary += " " + line
-                    else:
-                        summary = line
-        
-        # Fallback if parsing failed entirely
-        if not chinese_title or not summary:
-            print(f"  ⚠️  Could not parse title/summary, using full content")
-            chinese_title = f"【科技】{title}"
-            summary = content[:200] + "..." if len(content) > 200 else content
+        for attempt in range(max_attempts):
+            try:
+                # Use retry logic with exponential backoff for rate limiting
+                r = _mimo_api_request_with_retry(url, headers, payload)
+                data = r.json()
+                
+                if "choices" not in data or not data["choices"]:
+                    raise Exception("Empty or invalid response from MiMo API")
+                
+                content = data["choices"][0]["message"]["content"].strip()
+                print(f"  📡 MiMo API response received: {len(content)} characters (attempt {attempt + 1}/{max_attempts})")
+                
+                # Clean markdown code blocks if present
+                clean_content = content
+                if clean_content.startswith("```"):
+                    lines = clean_content.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    clean_content = "\n".join(lines).strip()
+                    
+                import json
+                parsed = json.loads(clean_content)
+                chinese_title = parsed.get("title", "").strip()
+                summary = parsed.get("summary", "").strip()
+                
+                if not chinese_title or not summary:
+                    raise ValueError("Parsed fields 'title' or 'summary' are empty")
+                
+                # If we successfully parsed valid JSON, break the retry loop
+                break
+                
+            except (json.JSONDecodeError, ValueError) as parse_err:
+                print(f"  ⚠️ JSON extraction failed on attempt {attempt + 1}/{max_attempts}: {parse_err}")
+                if attempt < max_attempts - 1:
+                    print(f"  🔄 Retrying AI generation...")
+                    time.sleep(1)
+                else:
+                    # On final attempt, fallback to legacy text parsing if we have the content
+                    if 'content' in locals() and content:
+                        print(f"  ⚠️ Attempting text fallback parsing on final attempt...")
+                        lines = content.split('\n')
+                        chinese_title = ""
+                        summary = ""
+                        for line in lines:
+                            line = line.strip()
+                            if line.startswith('标题:'):
+                                chinese_title = line.replace('标题:', '').strip()
+                            elif line.startswith('标题：'):
+                                chinese_title = line.replace('标题：', '').strip()
+                            elif line.startswith('摘要:'):
+                                summary = line.replace('摘要:', '').strip()
+                            elif line.startswith('摘要：'):
+                                summary = line.replace('摘要：', '').strip()
+                            elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
+                                chinese_title = line
+                            elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
+                                if summary:
+                                    summary += " " + line
+                                else:
+                                    summary = line
+                    
+                    if not chinese_title or not summary:
+                        # Fallback if parsing failed entirely on the final attempt
+                        print(f"  ⚠️ Could not parse title/summary on final attempt, using full content fallback")
+                        chinese_title = f"【科技】{title}"
+                        summary = content[:200] + "..." if ('content' in locals() and len(content) > 200) else (content if 'content' in locals() else "")
         
         print(f"  ✅ MiMo Chinese title: {chinese_title}")
         print(f"  ✅ MiMo summary generated: {len(summary)} characters")
@@ -1970,67 +1981,78 @@ def mimo_summarize_content(title, article_content):
         if not MIMO_DEEP_THINKING:
             payload["thinking"] = {"type": "disabled"}
         
-        # Use retry logic with exponential backoff for rate limiting
-        r = _mimo_api_request_with_retry(url, headers, payload)
-        data = r.json()
-        
-        if "choices" not in data or not data["choices"]:
-            raise Exception("Empty or invalid response from MiMo API")
-        
-        content = data["choices"][0]["message"]["content"].strip()
-        print(f"  📡 MiMo API response received: {len(content)} characters")
-        
-        # Parse the JSON response
         chinese_title = ""
         summary = ""
+        max_attempts = 2
         
-        # Clean markdown code blocks if present
-        clean_content = content
-        if clean_content.startswith("```"):
-            lines = clean_content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            clean_content = "\n".join(lines).strip()
-            
-        try:
-            import json
-            parsed = json.loads(clean_content)
-            chinese_title = parsed.get("title", "").strip()
-            summary = parsed.get("summary", "").strip()
-        except Exception as json_err:
-            print(f"  ⚠️ JSON parsing failed: {json_err}")
-            
-        # Fallback to legacy parsing if JSON parsing failed or fields are empty
-        if not chinese_title or not summary:
-            print(f"  ⚠️ Attempting text fallback parsing...")
-            lines = content.split('\n')
-            chinese_title = ""
-            summary = ""
-            for line in lines:
-                line = line.strip()
-                if line.startswith('标题:'):
-                    chinese_title = line.replace('标题:', '').strip()
-                elif line.startswith('标题：'):
-                    chinese_title = line.replace('标题：', '').strip()
-                elif line.startswith('摘要:'):
-                    summary = line.replace('摘要:', '').strip()
-                elif line.startswith('摘要：'):
-                    summary = line.replace('摘要：', '').strip()
-                elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
-                    chinese_title = line
-                elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
-                    if summary:
-                        summary += " " + line
-                    else:
-                        summary = line
-            
-        # Fallback if parsing failed entirely
-        if not chinese_title or not summary:
-            print(f"  ⚠️  Could not parse title/summary, using full content")
-            chinese_title = title  # Fallback to original title
-            summary = content
+        for attempt in range(max_attempts):
+            try:
+                # Use retry logic with exponential backoff for rate limiting
+                r = _mimo_api_request_with_retry(url, headers, payload)
+                data = r.json()
+                
+                if "choices" not in data or not data["choices"]:
+                    raise Exception("Empty or invalid response from MiMo API")
+                
+                content = data["choices"][0]["message"]["content"].strip()
+                print(f"  📡 MiMo API response received: {len(content)} characters (attempt {attempt + 1}/{max_attempts})")
+                
+                # Clean markdown code blocks if present
+                clean_content = content
+                if clean_content.startswith("```"):
+                    lines = clean_content.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    clean_content = "\n".join(lines).strip()
+                    
+                import json
+                parsed = json.loads(clean_content)
+                chinese_title = parsed.get("title", "").strip()
+                summary = parsed.get("summary", "").strip()
+                
+                if not chinese_title or not summary:
+                    raise ValueError("Parsed fields 'title' or 'summary' are empty")
+                
+                # If we successfully parsed valid JSON, break the retry loop
+                break
+                
+            except (json.JSONDecodeError, ValueError) as parse_err:
+                print(f"  ⚠️ JSON extraction failed on attempt {attempt + 1}/{max_attempts}: {parse_err}")
+                if attempt < max_attempts - 1:
+                    print(f"  🔄 Retrying AI generation...")
+                    time.sleep(1)
+                else:
+                    # On final attempt, fallback to legacy text parsing if we have the content
+                    if 'content' in locals() and content:
+                        print(f"  ⚠️ Attempting text fallback parsing on final attempt...")
+                        lines = content.split('\n')
+                        chinese_title = ""
+                        summary = ""
+                        for line in lines:
+                            line = line.strip()
+                            if line.startswith('标题:'):
+                                chinese_title = line.replace('标题:', '').strip()
+                            elif line.startswith('标题：'):
+                                chinese_title = line.replace('标题：', '').strip()
+                            elif line.startswith('摘要:'):
+                                summary = line.replace('摘要:', '').strip()
+                            elif line.startswith('摘要：'):
+                                summary = line.replace('摘要：', '').strip()
+                            elif not chinese_title and line and not line.startswith('摘要:') and not line.startswith('摘要：'):
+                                chinese_title = line
+                            elif chinese_title and line and not line.startswith('标题:') and not line.startswith('标题：'):
+                                if summary:
+                                    summary += " " + line
+                                else:
+                                    summary = line
+                    
+                    if not chinese_title or not summary:
+                        # Fallback if parsing failed entirely on the final attempt
+                        print(f"  ⚠️ Could not parse title/summary on final attempt, using full content fallback")
+                        chinese_title = title  # Fallback to original title
+                        summary = content if 'content' in locals() else ""
         
         print(f"  ✅ MiMo Chinese title: {chinese_title}")
         print(f"  ✅ MiMo summary generated: {len(summary)} characters")
@@ -2148,33 +2170,50 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
     }
     if not MIMO_DEEP_THINKING:
         payload["thinking"] = {"type": "disabled"}
-    r = _mimo_api_request_with_retry(url, headers, payload)
-    data = r.json()
-    if "choices" not in data or not data["choices"]:
-        raise Exception("Empty or invalid response from MiMo API")
-    raw = data["choices"][0]["message"]["content"].strip()
+    title = ""
+    max_attempts = 2
     
-    # Try parsing as JSON first
-    try:
-        import json
-        clean_content = raw
-        if clean_content.startswith("```"):
-            lines = clean_content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            clean_content = "\n".join(lines).strip()
+    for attempt in range(max_attempts):
+        try:
+            r = _mimo_api_request_with_retry(url, headers, payload)
+            data = r.json()
+            if "choices" not in data or not data["choices"]:
+                raise Exception("Empty or invalid response from MiMo API")
+            raw = data["choices"][0]["message"]["content"].strip()
             
-        parsed = json.loads(clean_content)
-        title = parsed.get("title", "").strip()
-        if title:
-            return title
-    except Exception as json_err:
-        print(f"  ⚠️ JSON parsing failed for regenerated title: {json_err}")
-        
-    # Fallback to legacy parser if JSON parsing failed
-    return _parse_title_only_from_llm_response(raw)
+            # Try parsing as JSON first
+            import json
+            clean_content = raw
+            if clean_content.startswith("```"):
+                lines = clean_content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                clean_content = "\n".join(lines).strip()
+                
+            parsed = json.loads(clean_content)
+            title = parsed.get("title", "").strip()
+            if not title:
+                raise ValueError("Parsed field 'title' is empty")
+            
+            # If we successfully parsed valid JSON, break the retry loop
+            break
+            
+        except (json.JSONDecodeError, ValueError) as json_err:
+            print(f"  ⚠️ JSON parsing failed for regenerated title on attempt {attempt + 1}/{max_attempts}: {json_err}")
+            if attempt < max_attempts - 1:
+                print(f"  🔄 Retrying title regeneration...")
+                time.sleep(1)
+            else:
+                # Fallback to legacy parser if JSON parsing failed on final attempt
+                if 'raw' in locals() and raw:
+                    print(f"  ⚠️ Attempting text fallback parsing for title on final attempt...")
+                    title = _parse_title_only_from_llm_response(raw)
+                if not title:
+                    raise Exception(f"Failed to regenerate title after {max_attempts} attempts: {json_err}")
+                    
+    return title
 
 def gemini_regenerate_chinese_title_only(reference_title: str, chinese_summary: str, article_excerpt: str | None):
     if not GEMINI_AVAILABLE:
