@@ -2116,11 +2116,18 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
         excerpt_block = f"\n文章摘录（供核对事实，请优先与摘要一致）：\n{article_excerpt.strip()[:4000]}\n"
     prompt = f"""先前生成的新闻标题中，【分类】后的主标题仍是英文。请根据下面已写好的中文摘要{('与文章摘录' if excerpt_block else '')}，只重新写一条中文标题。
 
+请以 JSON 格式输出，包含以下字段：
+1. "title": 中文标题，格式：【分类】简体中文标题
+
 要求：
-- 只输出一行，格式：标题: 【分类】简体中文标题
 - 【】内分类必须是：科技、娱乐、经济、体育、灾难、政治、综合 之一
 - 标题主文用简体中文；人名、品牌、地名可保留英文或马来文原文
-- 不要输出摘要、不要解释、不要其它行
+- 请只输出 JSON 格式的结果，不要包含其它任何解释性文字。
+
+例如：
+{{
+  "title": "【分类】简体中文标题"
+}}
 
 当前有问题的标题：{reference_title}
 
@@ -2137,6 +2144,7 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.35,
         "max_tokens": 1024,
+        "response_format": {"type": "json_object"}
     }
     if not MIMO_DEEP_THINKING:
         payload["thinking"] = {"type": "disabled"}
@@ -2145,6 +2153,27 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
     if "choices" not in data or not data["choices"]:
         raise Exception("Empty or invalid response from MiMo API")
     raw = data["choices"][0]["message"]["content"].strip()
+    
+    # Try parsing as JSON first
+    try:
+        import json
+        clean_content = raw
+        if clean_content.startswith("```"):
+            lines = clean_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_content = "\n".join(lines).strip()
+            
+        parsed = json.loads(clean_content)
+        title = parsed.get("title", "").strip()
+        if title:
+            return title
+    except Exception as json_err:
+        print(f"  ⚠️ JSON parsing failed for regenerated title: {json_err}")
+        
+    # Fallback to legacy parser if JSON parsing failed
     return _parse_title_only_from_llm_response(raw)
 
 def gemini_regenerate_chinese_title_only(reference_title: str, chinese_summary: str, article_excerpt: str | None):
