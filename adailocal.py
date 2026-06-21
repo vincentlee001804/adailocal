@@ -116,9 +116,12 @@ except Exception as e:
 MIMO_API_KEY = os.getenv("MIMO_API_KEY", "").strip()
 MIMO_API_BASE = os.getenv("MIMO_API_BASE", "https://api.xiaomimimo.com/v1").strip()
 MIMO_MODEL = os.getenv("MIMO_MODEL", "mimo-v2.5").strip()
+mimo_deep_thinking_env = os.getenv("MIMO_DEEP_THINKING", "true").strip().lower()
+MIMO_DEEP_THINKING = mimo_deep_thinking_env in ("1", "true")
 MIMO_AVAILABLE = bool(MIMO_API_KEY)
 if MIMO_AVAILABLE:
-    print("✅ Xiaomi MiMo LLM API configured successfully")
+    thinking_status = "enabled" if MIMO_DEEP_THINKING else "disabled"
+    print(f"✅ Xiaomi MiMo LLM API configured successfully (Deep Thinking: {thinking_status})")
 else:
     print("ℹ️  Xiaomi MiMo LLM API not configured (MIMO_API_KEY not set)")
 
@@ -1810,6 +1813,8 @@ def mimo_summarize_from_url(title, article_url):
             "max_tokens": 2048,
             "response_format": {"type": "json_object"}
         }
+        if not MIMO_DEEP_THINKING:
+            payload["thinking"] = {"type": "disabled"}
         
         # Use retry logic with exponential backoff for rate limiting
         r = _mimo_api_request_with_retry(url, headers, payload)
@@ -1962,6 +1967,8 @@ def mimo_summarize_content(title, article_content):
             "max_tokens": 2048,
             "response_format": {"type": "json_object"}
         }
+        if not MIMO_DEEP_THINKING:
+            payload["thinking"] = {"type": "disabled"}
         
         # Use retry logic with exponential backoff for rate limiting
         r = _mimo_api_request_with_retry(url, headers, payload)
@@ -2131,6 +2138,8 @@ def mimo_regenerate_chinese_title_only(reference_title: str, chinese_summary: st
         "temperature": 0.35,
         "max_tokens": 1024,
     }
+    if not MIMO_DEEP_THINKING:
+        payload["thinking"] = {"type": "disabled"}
     r = _mimo_api_request_with_retry(url, headers, payload)
     data = r.json()
     if "choices" not in data or not data["choices"]:
