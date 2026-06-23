@@ -3364,8 +3364,22 @@ def run_collector_loop():
                             send_successful = True
                         except Exception as api_error:
                             print(f"❌ API send failed: {api_error}")
-                            print(f"❌ News NOT marked as sent due to API failure")
-                            send_successful = False
+                            # Check if it is a permanent configuration or client error (e.g. 4xx HTTP code or credential error)
+                            is_permanent_error = False
+                            if isinstance(api_error, RuntimeError) and "token_error" in str(api_error):
+                                is_permanent_error = True
+                                print("⚠️ Feishu credentials/token error. Marking as processed to prevent infinite retry AI costs.")
+                            elif hasattr(api_error, 'response') and api_error.response is not None:
+                                status_code = api_error.response.status_code
+                                if 400 <= status_code < 500:
+                                    is_permanent_error = True
+                                    print(f"⚠️ Permanent 4xx client/config error detected ({status_code}). Marking as processed to prevent infinite retry AI costs.")
+                            
+                            if is_permanent_error:
+                                send_successful = True
+                            else:
+                                print(f"❌ News NOT marked as sent due to API failure")
+                                send_successful = False
 
                 # Only mark as sent and log to Bitable if send was successful
                 if send_successful:
