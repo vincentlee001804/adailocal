@@ -359,6 +359,8 @@ def send_card_message(token, chat_id, title, content, attribution=None):
     }
     payload = { "receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card, ensure_ascii=False) }
     r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    if r.status_code != 200:
+        print(f"❌ Feishu send message API error response: {r.status_code} - {r.text}")
     r.raise_for_status()
     data = r.json()
     if data.get("code") != 0:
@@ -392,6 +394,8 @@ def send_card_message_with_image(token, chat_id, title, content, image_key, attr
     }
     payload = { "receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card, ensure_ascii=False) }
     r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    if r.status_code != 200:
+        print(f"❌ Feishu send message (image) API error response: {r.status_code} - {r.text}")
     r.raise_for_status()
     data = r.json()
     if data.get("code") != 0:
@@ -1395,6 +1399,8 @@ def upload_image_to_feishu(token, image_url):
         }
         data = { 'image_type': 'message' }
         up = requests.post(f"{BASE}/open-apis/im/v1/images", headers={'Authorization': f'Bearer {token}'}, files=files, data=data, timeout=20)
+        if up.status_code != 200:
+            print(f"❌ Feishu image upload API error response: {up.status_code} - {up.text}")
         up.raise_for_status()
         resp = up.json()
         if resp.get('code') == 0:
