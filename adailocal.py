@@ -3440,6 +3440,8 @@ def run_collector_loop():
                     sent += 1
                 else:
                     print(f"⚠️  News NOT marked as sent due to send failure - will retry next cycle")
+                    print(f"🛑 Breaking cycle to prevent infinite AI token usage on failed sends.")
+                    break
                 if sent >= MAX_PER_CYCLE:
                     print(f"Reached MAX_PER_CYCLE={MAX_PER_CYCLE}, stop sending this round.")
                     break
