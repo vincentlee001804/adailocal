@@ -136,63 +136,111 @@ except Exception:
 # Feishu Open Platform base (international)
 BASE = "https://open.feishu.cn"
 
-RSS_FEEDS = [
-    # Google News feeds - Xiaomi and competitors focus
-    # "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=samsung+malaysia&hl=en&gl=MY&ceid=MY:en", # Samsung Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=apple+iphone+malaysia&hl=en&gl=MY&ceid=MY:en", # Apple iPhone Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=oneplus+malaysia&hl=en&gl=MY&ceid=MY:en", # OnePlus Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=huawei+malaysia&hl=en&gl=MY&ceid=MY:en", # Huawei Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=oppo+malaysia&hl=en&gl=MY&ceid=MY:en", # OPPO Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=vivo+malaysia&hl=en&gl=MY&ceid=MY:en", # Vivo Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=realme+malaysia&hl=en&gl=MY&ceid=MY:en", # Realme Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=smartphone+launch+malaysia&hl=en&gl=MY&ceid=MY:en", # Smartphone launches Malaysia (disabled)
-    
-    # Primary tech-focused feeds (most reliable)
-    # rss.app feeds disabled due to subscription pause
-    # "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
-    # "https://rss.app/feeds/r5wzRVVTbqYIyfSE.xml", #ZingGadget MY Fb
-    # "https://rss.app/feeds/DQPaHn61uiC3hfmk.xml", #TechnaveCN MY Fb
-    "https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml", #Soyacincau MY Fb
+def get_feeds_file_path():
+    # Check if we are running on Fly.io / have access to persistent /data volume
+    if os.path.exists("/data"):
+        return "/data/feeds.txt"
+    return os.environ.get("FEEDS_TXT_PATH", "feeds.txt")
+
+DEFAULT_FEEDS = [
+    "https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml",
     "https://www.soyacincau.com/feed/",
-    "https://cn.soyacincau.com/feed/",             # SoyaCincau 中文版
+    "https://cn.soyacincau.com/feed/",
     "https://amanz.my/feed/",
     "https://www.lowyat.net/feed/",
-    # Xiaomi official sources
-    "https://news.mi.com/global/rss",          # Xiaomi Newsroom (global)
-    "https://blog.mi.com/en/feed",             # Xiaomi Official Blog (EN)
-    # Chinese-language sources
-    "https://www.orientaldaily.com.my/feed/",   # 东方日报马来西亚
-    "https://cn.technave.com/feed/",            # TechNave 中文版
-    "https://zinggadget.com/zh/feed/",          # Zing Gadget 中文
-    
-    # Fallback feeds that are more likely to work on PythonAnywhere
+    "https://news.mi.com/global/rss",
+    "https://blog.mi.com/en/feed",
+    "https://www.orientaldaily.com.my/feed/",
+    "https://cn.technave.com/feed/",
+    "https://zinggadget.com/zh/feed/",
     "https://feeds.feedburner.com/soyacincau",
-    # "https://www.nst.com.my/rss.xml",
     "https://www.malaysiakini.com/rss/en/news.rss",
-    
-    # Additional feeds (may have network restrictions)
-    # "https://www.freemalaysiatoday.com/category/nation/feed/",
     "https://www.astroawani.com/rss/english",
     "https://www.astroawani.com/rss/terkini",
     "https://www.sinarharian.com.my/rss/terkini",
-    # "https://www.hmetro.com.my/terkini.rss",
-    # "https://www.bernama.com/en/rss.php",
-    # "https://www.theedgemalaysia.com/rss.xml",
-    
-    # Commented out feeds that may not work on PythonAnywhere
-    # "https://www.thestar.com.my/rss/News/Nation",
-    #"https://www.sinchew.com.my/feed/",
-    #"https://www.chinapress.com.my/feed/",
 ]
 
-# Feeds with highest priority (processed first when present)
-PRIORITY_FEEDS = {
-    # "https://news.google.com/rss/search?q=xiaomi+malaysia&hl=en&gl=MY&ceid=MY:en", # Xiaomi Malaysia (disabled)
-    # "https://news.google.com/rss/search?q=redmi+malaysia&hl=en&gl=MY&ceid=MY:en", # Redmi Malaysia (disabled)
-    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml", #Xiaomi MY Fb
-}
+DEFAULT_PRIORITY_FEEDS = [
+    "https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml",
+]
+
+def load_feeds_from_file():
+    """Load feeds from feeds.txt. If file does not exist, create it with defaults."""
+    path = get_feeds_file_path()
+    if not os.path.exists(path):
+        try:
+            parent = os.path.dirname(path)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write("# Adailocal RSS feeds configuration\n")
+                f.write("# Format: <feed_url> [# priority]\n\n")
+                f.write("# Priority feeds\n")
+                for pf in DEFAULT_PRIORITY_FEEDS:
+                    f.write(f"{pf} # priority\n")
+                f.write("\n# Regular feeds\n")
+                for rf in DEFAULT_FEEDS:
+                    f.write(f"{rf}\n")
+            print(f"Created new feeds file with defaults at {path}")
+        except Exception as e:
+            print(f"⚠️ Failed to create feeds file: {e}")
+            return list(DEFAULT_PRIORITY_FEEDS) + list(DEFAULT_FEEDS), set(DEFAULT_PRIORITY_FEEDS)
+
+    feeds = []
+    priority_feeds = set()
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                
+                # Check for priority suffix
+                url = stripped
+                is_priority = False
+                if '#' in stripped:
+                    url_part, comment_part = stripped.split('#', 1)
+                    url = url_part.strip()
+                    if 'priority' in comment_part.lower():
+                        is_priority = True
+                
+                if url:
+                    feeds.append(url)
+                    if is_priority:
+                        priority_feeds.add(url)
+        print(f"Loaded {len(feeds)} feeds ({len(priority_feeds)} priority) from {path}")
+    except Exception as e:
+        print(f"⚠️ Failed to read feeds file: {e}")
+        return list(DEFAULT_PRIORITY_FEEDS) + list(DEFAULT_FEEDS), set(DEFAULT_PRIORITY_FEEDS)
+        
+    return feeds, priority_feeds
+
+def add_feed_to_file(feed_url, is_priority=False):
+    """Appends a new feed URL to feeds.txt if it doesn't already exist."""
+    path = get_feeds_file_path()
+    # Check if already exists in file
+    feeds, _ = load_feeds_from_file()
+    if feed_url in feeds:
+        return False, "already_exists"
+        
+    try:
+        parent = os.path.dirname(path)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+            
+        # Append to file
+        with open(path, 'a', encoding='utf-8') as f:
+            suffix = " # priority" if is_priority else ""
+            # Ensure it starts on a new line
+            f.write(f"\n{feed_url}{suffix}\n")
+        print(f"Added new feed to {path}: {feed_url} (priority={is_priority})")
+        return True, "success"
+    except Exception as e:
+        print(f"⚠️ Failed to write to feeds file: {e}")
+        return False, str(e)
+
+# Initial load of RSS_FEEDS and PRIORITY_FEEDS
+RSS_FEEDS, PRIORITY_FEEDS = load_feeds_from_file()
 
 # All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
 TIMEOUT = (5, 15)
@@ -2642,7 +2690,157 @@ def collect_once():
     
     return items
 
-def main():
+# --- Feishu webhook callback receiver & Flask server ---
+from flask import Flask, request, jsonify
+
+flask_app = Flask("adailocal_receiver")
+
+def reply_to_feishu_message(message_id, title, content):
+    """Sends a card reply to a specific message using Feishu App API."""
+    app_id = os.environ.get("FEISHU_APP_ID", "").strip()
+    app_secret = os.environ.get("FEISHU_APP_SECRET", "").strip()
+    
+    if not app_id or not app_secret:
+        print("⚠️ FEISHU_APP_ID or FEISHU_APP_SECRET is not set; cannot send Feishu reply.")
+        return
+        
+    token = get_tenant_access_token(app_id, app_secret)
+    url = f"{BASE}/open-apis/im/v1/messages/{message_id}/reply"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    
+    card = _build_card(title, content)
+    payload = {
+        "msg_type": "interactive",
+        "content": json.dumps(card, ensure_ascii=False)
+    }
+    
+    r = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    r.raise_for_status()
+    data = r.json()
+    if data.get("code") != 0:
+        print(f"reply_fail: {data}")
+        raise RuntimeError(f"Feishu reply failed: {data}")
+    else:
+        print(f"Reply sent successfully to message {message_id}")
+
+@flask_app.route("/feishu/webhook", methods=["POST"])
+def feishu_webhook():
+    data = request.json or {}
+    print(f"📩 Webhook received from Feishu: {json.dumps(data)[:300]}")
+    
+    # 1. Handle URL verification challenge
+    if data.get("type") == "url_verification":
+        challenge = data.get("challenge")
+        print(f"✅ Handled URL verification challenge: {challenge}")
+        return jsonify({"challenge": challenge})
+        
+    # 2. Handle message events
+    event_header = data.get("header", {})
+    event_type = event_header.get("event_type")
+    
+    if event_type == "im.message.receive_v1":
+        event_body = data.get("event", {})
+        message = event_body.get("message", {})
+        
+        # Verify it is a text message
+        msg_type = message.get("message_type")
+        if msg_type == "text":
+            content_str = message.get("content", "{}")
+            message_id = message.get("message_id")
+            chat_id = message.get("chat_id")
+            
+            try:
+                content = json.loads(content_str)
+                text = content.get("text", "")
+            except Exception as parse_err:
+                print(f"⚠️ Failed to parse message content JSON: {parse_err}")
+                text = ""
+                
+            # Clean text (remove Feishu mention tags like <at id="..."></at>)
+            clean_text = re.sub(r'<at[^>]*>.*?</at>', '', text).strip()
+            clean_text_lower = clean_text.lower()
+            
+            # Find URLs in the clean text
+            urls = re.findall(r'https?://[^\s\u4e00-\u9fff]+', clean_text)
+            
+            if urls:
+                added_feeds = []
+                already_exists = []
+                errors = []
+                
+                for url in urls:
+                    # Clean trailing punctuation from URLs if any
+                    url = url.rstrip('.,;()[]{}')
+                    success, reason = add_feed_to_file(url, is_priority=False)
+                    if success:
+                        added_feeds.append(url)
+                    elif reason == "already_exists":
+                        already_exists.append(url)
+                    else:
+                        errors.append((url, reason))
+                        
+                # Construct response message
+                reply_lines = []
+                if added_feeds:
+                    reply_lines.append("✅ **Successfully added feeds:**")
+                    for f in added_feeds:
+                        reply_lines.append(f"- {f}")
+                if already_exists:
+                    reply_lines.append("ℹ️ **Feeds already exist:**")
+                    for f in already_exists:
+                        reply_lines.append(f"- {f}")
+                if errors:
+                    reply_lines.append("❌ **Failed to add feeds:**")
+                    for f, err in errors:
+                        reply_lines.append(f"- {f} (Error: {err})")
+                        
+                reply_content = "\n".join(reply_lines)
+                print(f"Sending reply to message {message_id}: {reply_content[:150]}...")
+                
+                # Send reply to Feishu group/user
+                try:
+                    reply_to_feishu_message(message_id, "RSS Feed Subscription Update", reply_content)
+                except Exception as reply_err:
+                    print(f"⚠️ Failed to send Feishu reply: {reply_err}")
+            elif clean_text_lower in ["list", "show", "feeds", "列表", "订阅列表"]:
+                feeds, priority_feeds = load_feeds_from_file()
+                reply_lines = []
+                reply_lines.append("📋 **Active RSS Subscriptions:**")
+                if not feeds:
+                    reply_lines.append("*(No active RSS subscriptions found)*")
+                else:
+                    for i, f in enumerate(feeds, 1):
+                        is_priority = f in priority_feeds
+                        suffix = " ⭐️ [priority]" if is_priority else ""
+                        reply_lines.append(f"{i}. {f}{suffix}")
+                reply_content = "\n".join(reply_lines)
+                print(f"Sending feeds list reply to message {message_id}...")
+                try:
+                    reply_to_feishu_message(message_id, "RSS Feeds List", reply_content)
+                except Exception as reply_err:
+                    print(f"⚠️ Failed to send Feishu reply: {reply_err}")
+            elif clean_text:
+                # User sent text but it didn't contain URLs or known commands, reply with help guidelines
+                reply_content = (
+                    "🤖 **AdaiLocal RSS Helper**\n\n"
+                    "Supported commands when tagging/mentioning the bot:\n"
+                    "• **Paste any RSS feed URL** to subscribe immediately.\n"
+                    "• Type **`list`** or **`列表`** to view all active subscriptions."
+                )
+                print(f"Sending help reply to message {message_id}...")
+                try:
+                    reply_to_feishu_message(message_id, "RSS Help Guide", reply_content)
+                except Exception as reply_err:
+                    print(f"⚠️ Failed to send Feishu reply: {reply_err}")
+            else:
+                print("No content found in the text message after cleaning mentions.")
+                
+    return jsonify({"status": "ok"})
+
+def run_collector_loop():
     # Support multiple webhook URLs
     webhook_urls = []
     webhook_secret = os.environ.get("FEISHU_WEBHOOK_SECRET", "").strip()
@@ -3273,6 +3471,23 @@ def main():
             loop_sleep = 600
         print(f"⏳ Sleeping {loop_sleep}s before next cycle...")
         time.sleep(loop_sleep)
+
+def main():
+    ONE_SHOT = os.environ.get("ONE_SHOT", "0") == "1"
+    if ONE_SHOT:
+        # Run collection once synchronously and exit
+        run_collector_loop()
+    else:
+        # Run background thread for collection
+        import threading
+        collector_thread = threading.Thread(target=run_collector_loop, daemon=True)
+        collector_thread.start()
+        print("🤖 Background news collector thread started")
+        
+        # Start Flask server for Webhooks & health checks (port 8080/configured PORT)
+        port = int(os.environ.get("PORT", 8080))
+        print(f"🚀 Starting Flask webhook listener on port {port}...")
+        flask_app.run(host="0.0.0.0", port=port, debug=False)
 
 if __name__ == "__main__":
     main()

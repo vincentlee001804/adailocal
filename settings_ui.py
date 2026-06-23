@@ -7,6 +7,58 @@ from flask import Flask, request, redirect, url_for, render_template_string
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 
+def _get_feeds_path():
+    if os.path.exists("/data"):
+        return Path("/data/feeds.txt")
+    env_path = os.environ.get("FEEDS_TXT_PATH")
+    if env_path:
+        return Path(env_path)
+    return BASE_DIR / "feeds.txt"
+
+DEFAULT_FEEDS_CONTENT = """# Adailocal RSS feeds configuration
+# Format: <feed_url> [# priority]
+
+# Priority feeds
+https://rss.app/feeds/7kWc8DwjcHvi1nOK.xml # priority
+
+# Regular feeds
+https://rss.app/feeds/M50McNEZ5iyyJ4LI.xml
+https://www.soyacincau.com/feed/
+https://cn.soyacincau.com/feed/
+https://amanz.my/feed/
+https://www.lowyat.net/feed/
+https://news.mi.com/global/rss
+https://blog.mi.com/en/feed
+https://www.orientaldaily.com.my/feed/
+https://cn.technave.com/feed/
+https://zinggadget.com/zh/feed/
+https://feeds.feedburner.com/soyacincau
+https://www.malaysiakini.com/rss/en/news.rss
+https://www.astroawani.com/rss/english
+https://www.astroawani.com/rss/terkini
+https://www.sinarharian.com.my/rss/terkini
+"""
+
+def _load_feeds():
+    path = _get_feeds_path()
+    if not path.exists():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(DEFAULT_FEEDS_CONTENT, encoding="utf-8")
+        except Exception:
+            return DEFAULT_FEEDS_CONTENT
+    return path.read_text(encoding="utf-8")
+
+def _write_feeds(content):
+    path = _get_feeds_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return True
+    except Exception as e:
+        print(f"Error writing feeds file: {e}")
+        return False
+
 # Keys that this UI will manage. Other keys in .env will be preserved.
 MANAGED_KEYS = [
     # Feishu webhook bot (simple mode)
@@ -620,6 +672,32 @@ TEMPLATE = """
         </section>
       </div>
 
+      <!-- RSS Feed Sources -->
+      <section class="rounded-2xl border border-slate-800 bg-slate-900/80 shadow-[0_18px_45px_rgba(15,23,42,0.65)] backdrop-blur-sm mt-6">
+        <div class="border-b border-slate-800 px-5 py-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold tracking-wide text-slate-100 uppercase">
+              RSS Feed Sources
+            </h2>
+            <p class="mt-1 text-xs text-slate-400">
+              Manage your RSS URLs. One URL per line. Add <code class="px-1 py-0.5 rounded bg-slate-950 font-mono text-[10px]"># priority</code> to treat it as high priority. Lines starting with <code class="px-1 py-0.5 rounded bg-slate-950 font-mono text-[10px]">#</code> are ignored as comments/disabled.
+            </p>
+          </div>
+        </div>
+        <div class="px-5 py-4">
+          <label for="feeds_content" class="block text-xs font-medium text-slate-200 mb-2">
+            feeds.txt Content
+          </label>
+          <textarea
+            id="feeds_content"
+            name="feeds_content"
+            rows="10"
+            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-mono focus:border-brand-500 focus:ring-2 focus:ring-brand-500/40 outline-none transition"
+            placeholder="https://example.com/rss/feed.xml"
+          >{{ feeds_content }}</textarea>
+        </div>
+      </section>
+
       <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="submit"
@@ -681,12 +759,17 @@ def index():
             new_values[key] = "1" if form.get(key) else "0"
 
         _write_env(lines, file_env, new_values)
+        
+        # Save feeds content
+        feeds_content = form.get("feeds_content", "").strip()
+        _write_feeds(feeds_content)
 
         # Refresh config view with new values
         config.update(new_values)
-        return render_template_string(TEMPLATE, config=config, saved=True)
+        return render_template_string(TEMPLATE, config=config, saved=True, feeds_content=feeds_content)
 
-    return render_template_string(TEMPLATE, config=config, saved=False)
+    feeds_content = _load_feeds()
+    return render_template_string(TEMPLATE, config=config, saved=False, feeds_content=feeds_content)
 
 
 if __name__ == "__main__":
