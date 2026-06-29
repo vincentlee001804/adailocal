@@ -1476,6 +1476,7 @@ def gemini_summarize_from_url(title, article_url):
 2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
+- 如果文章极其简短、或者缺乏实质性内容（例如没有明确的产品型号、品牌名称、具体参数规格或核心功能介绍，仅为视频引流或社交媒体互动等），请将“标题”和“摘要”均直接输出为 "SKIP"。
 - 标题和摘要必须用简体中文（不要使用繁体中文）
 - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
@@ -1565,6 +1566,7 @@ def gemini_summarize_content(title, article_content):
 2. **中文摘要** - 不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
+- 如果文章极其简短、或者缺乏实质性内容（例如没有明确的产品型号、品牌名称、具体参数规格或核心功能介绍，仅为视频引流或社交媒体互动等），请将“标题”和“摘要”均直接输出为 "SKIP"。
 - 标题和摘要必须用简体中文（不要使用繁体中文）
 - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
@@ -1995,6 +1997,7 @@ def mimo_summarize_content(title, article_content):
 2. "summary": 中文摘要，不超过100字，用2-3句完整的话总结新闻的关键信息（时间、地点、主体、关键数字和影响）
 
 要求：
+- 如果文章极其简短、或者缺乏实质性内容（例如没有明确的产品型号、品牌名称、具体参数规格或核心功能介绍，仅为视频导流或社交媒体互动等），请将 JSON 中的 "title" 和 "summary" 均直接设置为 "SKIP"。
 - 标题和摘要必须用简体中文（不要使用繁体中文）
 - 分类选项：科技、娱乐、经济、体育、灾难、政治、综合
 - 人名、品牌名、产品名、地名保持原文（英文/马来文），不要翻译成中文（如Nabil Halimi、PKR、Malaysiakini等应保持原样）
@@ -3108,6 +3111,15 @@ def run_collector_loop():
                     article_content = read_article_content(it['url'])
                     it["_fetched_article_text"] = article_content if (article_content and len(article_content) > 100) else None
                     
+                    # Heuristic pre-filtering to skip short stub/teaser articles without brand/product keywords
+                    fetched_len = len(article_content) if article_content else 0
+                    rss_len = len(it.get('body', '') or '')
+                    if fetched_len < 250 and rss_len < 100:
+                        if not has_brand_keywords(it.get("title", "")):
+                            print(f"  ⏭️ Skipping low-content article (fetched: {fetched_len} chars, RSS body: {rss_len} chars): {it['title'][:60]}")
+                            sent_news_urls.add(it['url'])  # Mark as processed to prevent retrying
+                            continue
+                    
                     if article_content and len(article_content) > 100:
                         print(f"  📖 Article content extracted: {len(article_content)} characters")
                         print(f"  📄 Content preview: {article_content[:200]}...")
@@ -3194,6 +3206,15 @@ def run_collector_loop():
                             summary = cn_summary
                     except Exception as _e:
                         print(f"  ⚠️ Regeneration failed: {_e}")
+
+                # Check if LLM flagged the article to be skipped
+                if use_ai and (
+                    "skip" in (summary or "").lower() or 
+                    "skip" in (it["title"] or "").lower()
+                ):
+                    print(f"  ⏭️ Skipping low-substance article (filtered by AI): {it['title']}")
+                    sent_news_urls.add(it['url'])  # Mark as processed to prevent retrying
+                    continue
 
                 # Final safety check - ensure we never send empty/placeholder content
                 # Apply Chinese name mapping to any remaining English-name instances
