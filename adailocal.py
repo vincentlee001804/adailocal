@@ -155,8 +155,8 @@ DEFAULT_FEEDS = [
     "https://zinggadget.com/zh/feed/",
     "https://feeds.feedburner.com/soyacincau",
     "https://www.malaysiakini.com/rss/en/news.rss",
-    "https://www.astroawani.com/rss/english",
-    "https://www.astroawani.com/rss/terkini",
+    "https://www.astroawani.com/rss/latest/en/public",
+    "https://www.astroawani.com/rss/latest/public",
     "https://www.sinarharian.com.my/rss/terkini",
 ]
 
