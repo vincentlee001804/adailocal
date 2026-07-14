@@ -3498,8 +3498,26 @@ def run_collector_loop():
             loop_sleep = int(os.environ.get("COLLECT_INTERVAL_SEC", "600"))
         except Exception:
             loop_sleep = 600
-        print(f"⏳ Sleeping {loop_sleep}s before next cycle...")
-        time.sleep(loop_sleep)
+        
+        # Calculate time to sleep to align with the next interval boundary (e.g. 1800s aligns to XX:00 and XX:30)
+        # Malaysia time (UTC+8) is offset by exactly 8 hours (0 minutes), so UTC epoch multiples align 
+        # perfectly with Malaysia clock intervals.
+        now = time.time()
+        next_run = (int(now) // loop_sleep + 1) * loop_sleep
+        sleep_duration = next_run - now
+        
+        # Guard against extremely short sleep due to float precision
+        if sleep_duration < 1:
+            sleep_duration = loop_sleep
+            
+        # Format next run time for logs in Malaysia timezone
+        from datetime import datetime, timezone, timedelta
+        malaysia_tz = timezone(timedelta(hours=8))
+        next_dt = datetime.fromtimestamp(next_run, tz=malaysia_tz)
+        next_run_str = next_dt.strftime("%Y-%m-%d %H:%M:%S (MYT)")
+        
+        print(f"⏳ Sleeping {sleep_duration:.1f}s before next cycle (Next run aligned at: {next_run_str})...")
+        time.sleep(sleep_duration)
 
 def main():
     ONE_SHOT = os.environ.get("ONE_SHOT", "0") == "1"
