@@ -6,3 +6,4 @@ lxml
 sumy
 google-generativeai
 flask
+playwright

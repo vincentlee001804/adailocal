@@ -1124,31 +1124,49 @@ def read_article_content(url):
 
         # More comprehensive content selectors for Malaysian news sites
         content_selectors = [
-            # Common article selectors
-            'article', '.article-content', '.post-content', '.entry-content', '.story-content',
-            '.content', '.main-content', '.article-body', '.post-body', '.entry-body',
-            'main', '.main', '#content', '#main', '.post', '.entry', '.story',
-            
+            # Specific content containers FIRST (generic 'article' often matches
+            # sidebar widget cards, e.g. JNews-theme sites like SoyaCincau)
+            '.entry-content', '.post-content', '.article-content', '.story-content',
+            '.article-body', '.post-body', '.entry-body', '.content-body',
+
             # Malaysian news site specific selectors
             '.article-text', '.article-body-text', '.story-text', '.news-content',
             '.post-text', '.entry-text', '.content-text', '.article-main',
-            
+
+            # Generic containers
+            '.content', '.main-content', 'main', '.main', '#content', '#main',
+            '.post', '.entry', '.story',
+
+            # Bare <article> last among containers — handled specially below
+            'article',
+
             # Generic content areas
-            '.text', '.body', '.article', '.post', '.entry', '.story',
+            '.text', '.body', '.article',
             'p', '.paragraph', '.content-paragraph'
         ]
-        
+
         content = ""
         for selector in content_selectors:
             elements = soup.select(selector)
             if elements:
+                if selector == 'article':
+                    # Many themes (e.g. JNews) wrap sidebar/related-post cards in
+                    # <article> tags too. Take the single LARGEST article element
+                    # (the real story body) instead of joining all of them.
+                    candidates = [e for e in elements if len(e.get_text(strip=True)) > 50]
+                    if candidates:
+                        best = max(candidates, key=lambda e: len(e.get_text(strip=True)))
+                        content = best.get_text(strip=True)
+                        print(f"  🎯 Found content with selector: article (largest of {len(elements)} matches)")
+                        break
+                    continue
                 # Get text from all matching elements
                 text_parts = []
                 for elem in elements:
                     text = elem.get_text(strip=True)
                     if len(text) > 50:  # Only include substantial text blocks
                         text_parts.append(text)
-                
+
                 if text_parts:
                     content = " ".join(text_parts)
                     print(f"  🎯 Found content with selector: {selector}")
@@ -3470,6 +3488,46 @@ def run_collector_loop():
             
             # Save sent news URLs to file after each cycle
             save_sent_news(sent_news_urls)
+            
+            # --- Facebook page watch (Xiaomi Malaysia), gated by interval ---
+            # Runs at most once every FB_WATCH_INTERVAL_SEC (default 2h); the
+            # last-scan timestamp persists in logs/fb_watch_last.txt so restarts
+            # don't re-trigger it. Set FB_WATCH_ENABLED=0 to disable.
+            try:
+                if os.environ.get("FB_WATCH_ENABLED", "1") == "1":
+                    try:
+                        fb_interval = int(os.environ.get("FB_WATCH_INTERVAL_SEC", "7200"))
+                    except Exception:
+                        fb_interval = 7200
+                    fb_state_path = os.environ.get("FB_LAST_SCAN_PATH", "logs/fb_watch_last.txt")
+                    last_scan = 0
+                    if os.path.exists(fb_state_path):
+                        try:
+                            with open(fb_state_path) as f:
+                                last_scan = int(f.read().strip() or "0")
+                        except Exception:
+                            last_scan = 0
+                    if time.time() - last_scan >= fb_interval:
+                        print("📘 Running Facebook page watch (Xiaomi Malaysia)...")
+                        try:
+                            import fb_watch
+                            pushed = fb_watch.scan_and_push(webhook_urls=webhook_urls, secret=webhook_secret)
+                            print(f"📘 Facebook watch done: {pushed} new post(s) pushed")
+                        except Exception as fb_err:
+                            print(f"⚠️  Facebook watch failed (news loop unaffected): {fb_err}")
+                        # Stamp the attempt either way so a broken scrape doesn't
+                        # hammer Facebook every cycle.
+                        try:
+                            os.makedirs("logs", exist_ok=True)
+                            with open(fb_state_path, "w") as f:
+                                f.write(str(int(time.time())))
+                        except Exception:
+                            pass
+                    else:
+                        next_in = int(fb_interval - (time.time() - last_scan))
+                        print(f"📘 Facebook watch: next scan in ~{next_in // 60}min")
+            except Exception as fb_gate_err:
+                print(f"⚠️  Facebook watch gate error: {fb_gate_err}")
             
         except Exception as e:
             print(f"loop_error: {e}")
