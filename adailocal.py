@@ -239,7 +239,50 @@ def add_feed_to_file(feed_url, is_priority=False):
         print(f"⚠️ Failed to write to feeds file: {e}")
         return False, str(e)
 
+def sync_image_feeds_to_data():
+    """Merge any new feeds from the deployed image's /app/feeds.txt into /data/feeds.txt
+    so that adding feeds to the repo and redeploying actually propagates to Fly machines
+    that use a persistent /data volume."""
+    image_path = "/app/feeds.txt"
+    data_path = "/data/feeds.txt"
+    if not os.path.exists(image_path) or not os.path.exists(data_path):
+        return
+    try:
+        def parse_feeds(path):
+            feeds = {}
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith('#'):
+                        continue
+                    url = stripped
+                    is_priority = False
+                    if '#' in stripped:
+                        url_part, comment_part = stripped.split('#', 1)
+                        url = url_part.strip()
+                        if 'priority' in comment_part.lower():
+                            is_priority = True
+                    if url:
+                        feeds[url] = is_priority
+            return feeds
+
+        image_feeds = parse_feeds(image_path)
+        data_feeds = parse_feeds(data_path)
+        added = []
+        with open(data_path, 'a', encoding='utf-8') as f:
+            for url, is_priority in image_feeds.items():
+                if url not in data_feeds:
+                    suffix = " # priority" if is_priority else ""
+                    f.write(f"\n{url}{suffix}\n")
+                    added.append(url)
+        if added:
+            print(f"[sync] Merged {len(added)} new feed(s) from image into {data_path}: {added}")
+    except Exception as e:
+        print(f"[sync] Warning: could not sync image feeds to /data: {e}")
+
 # Initial load of RSS_FEEDS and PRIORITY_FEEDS
+sync_image_feeds_to_data()
+RSS_FEEDS, PRIORITY_FEEDS = load_feeds_from_file()
 RSS_FEEDS, PRIORITY_FEEDS = load_feeds_from_file()
 
 # All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
