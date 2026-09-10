@@ -1,13 +1,33 @@
 # Adailocal RSS feeds configuration
 # Format: <feed_url> [# priority]
 
+# Tech/gadget (primary)
 https://cn.soyacincau.com/feed/
+https://bm.soyacincau.com/feed
+https://feeds.feedburner.com/soyacincau
 https://amanz.my/feed/
 https://www.lowyat.net/feed/
 https://cn.technave.com/feed/
 https://zinggadget.com/zh/feed/
-https://feeds.feedburner.com/soyacincau
-https://www.malaysiakini.com/rss/en/news.rss
-https://www.astroawani.com/rss/latest/en/public
-https://www.astroawani.com/rss/latest/public
+https://www.vtechgraphy.com/feed
+https://www.fuzz.my/feed
+https://www.izamigadget.com/feed
+https://klgadgetguy.com/feed
+https://nasilemaktech.com/feed
+https://nextrift.com/feed
+https://www.thevocket.com/feed
 https://leetechnews.wordpress.com/feed/
+
+# Gaming
+https://sea.ign.com/rss
+https://www.gamerbraves.com/feed
+https://gamersantai.com/feed
+https://www.wanuxi.com/feed
+
+# Tech blogs / video
+https://www.adamlobo.tv/feed
+
+# General news (has tech coverage)
+https://www.malaysiakini.com/rss/en/news.rss
+https://www.freemalaysiatoday.com/feeds/rss/headlines
+https://www.thestar.com.my/rss/news
