@@ -2654,7 +2654,13 @@ def is_malaysiakini_snapshot(source_name, feed_url, title, desc):
     ]
     return any(marker in content_text for marker in snapshot_markers)
 
-def collect_once():
+def collect_once(already_sent=None):
+    """Fetch all feeds and return a list of recent news items.
+    already_sent: optional set of URLs that have already been sent (persistent
+    dedup). When provided, duplicate URLs are skipped during collection instead
+    of wasting AI tokens later in the pipeline."""
+    if already_sent is None:
+        already_sent = set()
     items = []
     # Process priority feeds first, then the rest
     ordered_feeds = list(PRIORITY_FEEDS) + [u for u in RSS_FEEDS if u not in PRIORITY_FEEDS]
@@ -2746,8 +2752,8 @@ def collect_once():
                 SEEN.add(k)
 
                 # Also check if we've already sent this resolved URL
-                if resolved_link in SENT_URLS or link in SENT_URLS:
-                    print(f"  URL already sent, skipping: {resolved_link or link}")
+                if resolved_link in already_sent or link in already_sent:
+                    print(f"  URL already sent (persistent dedup), skipping: {resolved_link or link}")
                     continue
 
                 items.append({
@@ -3103,7 +3109,7 @@ def run_collector_loop():
         try:
             sent = 0
             print(f"=== Starting collection cycle ===")
-            items = collect_once()
+            items = collect_once(already_sent=sent_news_urls)
             print(f"=== Found {len(items)} total items ===")
             # Category priority weights (higher = sent first)
             CATEGORY_WEIGHTS = {
