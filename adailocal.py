@@ -3162,7 +3162,13 @@ def run_collector_loop():
                     )
                     continue
 
-                # Log brand-related news priority
+                # Temporary filter: skip Astro Awani politics articles
+                source_name_raw = it.get("source", "")
+                is_astro_awani = "astroawani" in source_name_raw.lower() or "astro awani" in source_name_raw.lower()
+                if is_astro_awani and classify(it.get("title", ""), "") == "政治":
+                    print(f"⏭️  Skipping Astro Awani politics article: {it['title'][:50]}...")
+                    sent_news_urls.add(it['url'])  # Mark as processed so it doesn't retry
+                    continue
                 if has_brand_keywords(it.get("title", "")):
                     print(f"🏷️  Processing brand-related news (priority): {it['title'][:60]}...")
 
