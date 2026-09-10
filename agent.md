@@ -40,7 +40,8 @@ Two run modes, selected by `ONE_SHOT` (`main()` at end of `adailocal.py`):
 
 Per cycle (`collect_once()` + loop body):
 
-1. **Load feeds** from `feeds.txt` (path overridable via `FEEDS_TXT_PATH`; on Fly.io uses `/data/feeds.txt`). Feeds tagged `# priority` are handled first; `DISABLE_RSS_APP=1` skips rss.app feeds.
+1. **Load feeds** from `feeds.txt` (path overridable via `FEEDS_TXT_PATH`; on Fly.io uses `/data/feeds.txt`).
+   On startup, `sync_image_feeds_to_data()` merges any **new feeds from the deployed image** (`/app/feeds.txt`) into the persistent volume copy, so adding feeds to the repo and redeploying automatically propagates them. Feeds tagged `# priority` are handled first; `DISABLE_RSS_APP=1` skips rss.app feeds.
 2. **Fetch & parse** each feed with `feedparser`; skip items older than `RECENT_NEWS_HOURS` (default 24 h); resolve Google News redirect URLs.
 3. **Deduplicate**, three layers:
    - URL-level: `sent_news.txt` (persisted, path via `SENT_NEWS_PATH`).
@@ -52,7 +53,12 @@ Per cycle (`collect_once()` + loop body):
    consistency checking.
 5. **Classify** (`classify()`) into Chinese categories — 政治/科技/文娱/经济/体育/灾害/综合 —
    via keyword lists (conservative; falls back to 综合).
-6. **Summarize in Chinese**, LLM-first with fallback chain:
+6. **Prioritize & sort** — before sending, items are sorted by:
+   - Brand keywords (Xiaomi/REDMI/POCO/mijia) — absolute highest priority.
+   - Priority feed flag (`# priority` in `feeds.txt`).
+   - **Category weight** — 科技/灾难/文娱 (tier 1, weight 4), 经济/体育 (tier 2, weight 3), 政治 (tier 3, weight 2), 综合 (tier 4, weight 1).
+   - Publication date (newest first).
+7. **Summarize in Chinese**, LLM-first with fallback chain:
    - **Xiaomi MiMo** (`mimo_summarize_*`, retry with backoff, optional "deep thinking")
    - **Google Gemini** (`gemini_summarize_*`)
    - Local **TextRank** via `sumy` when `USE_AI_SUMMARY=1`, else safe truncation.
@@ -159,7 +165,8 @@ fly deploy -c deploy/fly.toml            # or root fly.toml
   rss.app and drop the feed into `feeds.txt`. Playwright browsers must be installed
   (`python -m playwright install chromium`); Fly.io Docker image has no browser, so the
   watcher is currently local-run only.
-- Recent work (see `git log`): clock-aligned sleep, feed URL fixes, low-content article
+- **Feed sync on Fly.io** — because the `/data` volume persists across deploys, the running bot uses `/data/feeds.txt`, not the image's `/app/feeds.txt`. The `sync_image_feeds_to_data()` function runs on startup to merge any new feeds from the image into `/data`, so simply editing `feeds.txt` and redeploying now works without manual SSH intervention.
+- **Category-based send priority** — `classify()` determines the category (科技/灾难/文娱/经济/体育/政治/综合), and the sort key applies category weights in addition to brand/priority/date. This is purely about send-order priority; the category label in the title remains the same.
   filtering, send-failure cycle breaking.
 
 ## 7. Quick verification after changes
@@ -167,4 +174,4 @@ fly deploy -c deploy/fly.toml            # or root fly.toml
 1. `python -c "import adailocal"` — syntax/import check.
 2. `ONE_SHOT=1 DISABLE_LEADER_ELECTION=1 MAX_PUSH_PER_CYCLE=1 python adailocal.py`
    with no webhook set → runs in TEST MODE (no actual sending).
-3. Check `logs/adailocal.log` for feed warnings, dedup counts, and send results.
+3. Check `logs/adailocal.log` for feed warnings, dedup counts, category breakdown (`=== Category breakdown ===`), and send results.
