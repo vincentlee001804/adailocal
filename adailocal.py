@@ -268,21 +268,47 @@ def sync_image_feeds_to_data():
 
         image_feeds = parse_feeds(image_path)
         data_feeds = parse_feeds(data_path)
+        
+        # Add feeds from image that are missing in /data
         added = []
-        with open(data_path, 'a', encoding='utf-8') as f:
-            for url, is_priority in image_feeds.items():
-                if url not in data_feeds:
-                    suffix = " # priority" if is_priority else ""
-                    f.write(f"\n{url}{suffix}\n")
-                    added.append(url)
+        for url, is_priority in image_feeds.items():
+            if url not in data_feeds:
+                suffix = " # priority" if is_priority else ""
+                data_feeds[url] = is_priority
+                added.append(url)
+        
+        # Remove feeds from /data that are no longer in the image
+        removed = []
+        for url in list(data_feeds.keys()):
+            if url not in image_feeds:
+                del data_feeds[url]
+                removed.append(url)
+        
+        # Rewrite /data/feeds.txt with the synced set, preserving priority flags
+        priority_feeds = [u for u, p in data_feeds.items() if p]
+        regular_feeds = [u for u, p in data_feeds.items() if not p]
+        with open(data_path, 'w', encoding='utf-8') as f:
+            f.write("# Adailocal RSS feeds configuration\n")
+            f.write("# Format: <feed_url> [# priority]\n")
+            if priority_feeds:
+                f.write("\n# Priority feeds\n")
+                for u in priority_feeds:
+                    f.write(f"{u} # priority\n")
+            f.write("\n# Regular feeds\n")
+            for u in regular_feeds:
+                f.write(f"{u}\n")
+        
         if added:
-            print(f"[sync] Merged {len(added)} new feed(s) from image into {data_path}: {added}")
+            print(f"[sync] Added {len(added)} new feed(s): {added}")
+        if removed:
+            print(f"[sync] Removed {len(removed)} stale feed(s): {removed}")
+        if not added and not removed:
+            print(f"[sync] /data/feeds.txt already in sync with image ({len(data_feeds)} feeds)")
     except Exception as e:
         print(f"[sync] Warning: could not sync image feeds to /data: {e}")
 
 # Initial load of RSS_FEEDS and PRIORITY_FEEDS
 sync_image_feeds_to_data()
-RSS_FEEDS, PRIORITY_FEEDS = load_feeds_from_file()
 RSS_FEEDS, PRIORITY_FEEDS = load_feeds_from_file()
 
 # All news categories are now supported (经济, 体育, 文娱, 灾害, 科技, 综合)
