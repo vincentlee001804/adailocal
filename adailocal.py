@@ -3096,13 +3096,26 @@ def run_collector_loop():
             print(f"=== Starting collection cycle ===")
             items = collect_once()
             print(f"=== Found {len(items)} total items ===")
-            # Sort by brand keywords first (highest priority), then priority feeds, then by published_at (latest first)
+            # Category priority weights (higher = sent first)
+            CATEGORY_WEIGHTS = {
+                "科技": 4,
+                "灾难": 4,
+                "文娱": 4,
+                "经济": 3,
+                "体育": 3,
+                "政治": 2,
+                "综合": 1,
+            }
+            
+            # Sort by: brand keywords → priority feeds → category weight → published_at (latest first)
             def _k(it):
                 title = it.get("title", "") or ""
                 has_brand = 1 if has_brand_keywords(title) else 0
                 priority = 1 if it.get("priority") else 0
+                cat = classify(title, "")
+                category_weight = CATEGORY_WEIGHTS.get(cat, 1)
                 published_at = it.get("published_at") or "1970-01-01T00:00:00"
-                return (has_brand, priority, published_at)
+                return (has_brand, priority, category_weight, published_at)
             items.sort(key=_k, reverse=True)
             # Collapse near-duplicate items within this fetch round so we don't queue
             # 5 versions of the same story for the next 5 cycles.
@@ -3113,11 +3126,22 @@ def run_collector_loop():
             if brand_news_count > 0:
                 print(f"🏷️  Found {brand_news_count} brand-related news items (Xiaomi/REDMI/POCO/mijia) - prioritized!")
             
-            # Log the top 10 most recent items for verification
+            # Log category breakdown for verification
+            cat_counts = {}
+            for it in items:
+                c = classify(it.get("title", ""), "")
+                cat_counts[c] = cat_counts.get(c, 0) + 1
+            print(f"=== Category breakdown ({len(items)} items) ===")
+            for c in ["科技", "灾难", "文娱", "经济", "体育", "政治", "综合"]:
+                if c in cat_counts:
+                    print(f"  {c}: {cat_counts[c]}")
+            
+            # Log the top 10 most recent news items for verification
             print(f"=== Top 10 most recent news items ===")
             for i, item in enumerate(items[:10]):
                 brand_marker = " [BRAND]" if has_brand_keywords(item.get("title", "")) else ""
-                print(f"{i+1}. {item['title'][:60]}...{brand_marker} (Published: {item.get('published_at', 'No date')})")
+                cat = classify(item.get("title", ""), "")
+                print(f"{i+1}. {item['title'][:60]}...{brand_marker} [{cat}] (Published: {item.get('published_at', 'No date')})")
             
             # Process items and skip already sent news
             for it in items:
