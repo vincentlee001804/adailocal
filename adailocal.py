@@ -848,7 +848,6 @@ def _extract_source_from_url(url):
             'nextrift.com': 'Nextrift',
             'thevocket.com': 'The Vocket',
             'leetechnews.wordpress.com': 'Lee Tech News',
-            'sea.ign.com': 'IGN SEA',
             'gamerbraves.com': 'GamerBraves',
             'gamersantai.com': 'Gamer Santai',
             'wanuxi.com': 'Wanuxi',

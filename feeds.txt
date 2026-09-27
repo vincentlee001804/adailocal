@@ -19,7 +19,6 @@ https://www.thevocket.com/feed
 https://leetechnews.wordpress.com/feed/
 
 # Gaming
-https://sea.ign.com/rss
 https://www.gamerbraves.com/feed
 https://gamersantai.com/feed
 https://www.wanuxi.com/feed
