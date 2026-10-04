@@ -28,5 +28,4 @@ https://www.adamlobo.tv/feed
 
 # General news (has tech coverage)
 https://www.malaysiakini.com/rss/en/news.rss
-https://www.freemalaysiatoday.com/feeds/rss/headlines
 https://www.thestar.com.my/rss/news
