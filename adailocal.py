@@ -665,6 +665,53 @@ try:
 except Exception:
     MIN_TITLE_LEN_FOR_SIM = 8
 
+# Token-containment similarity: catches the same story published under fully
+# rewritten headlines (e.g. "ASUS ProArt P14和P16在马来西亚开启预售" vs
+# "ASUS ProArt P14和P16笔记本开启预购，搭载NVIDIA RTX Spark N1X售价RM29,999"),
+# where char-bigram Jaccard collapses (~0.36) because the extra detail dilutes
+# overlap. We extract Latin-word/number tokens (product names, model numbers,
+# prices) and treat the titles as the same story when most of the *shorter*
+# title's tokens appear in the longer one. Language-agnostic by construction,
+# so English original titles still match AI-generated Chinese titles.
+try:
+    SIM_TOKEN_CONTAIN_THRESHOLD = float(os.environ.get("SIM_TOKEN_CONTAIN_THRESHOLD", "0.75"))
+except Exception:
+    SIM_TOKEN_CONTAIN_THRESHOLD = 0.75
+
+# Containment requires the shorter side to have at least this many tokens AND
+# at least one token of 3+ chars, so "AI 14" style coincidences never trigger.
+try:
+    MIN_TOKENS_FOR_CONTAIN = int(os.environ.get("MIN_TOKENS_FOR_CONTAIN", "3"))
+except Exception:
+    MIN_TOKENS_FOR_CONTAIN = 3
+
+_MIN_TOKEN_CHARS = 3
+_TOKEN_SPLIT_RE = re.compile(r'[a-z]+|\d+', re.UNICODE)
+
+
+def _significant_tokens(title: str):
+    """Latin-word + number tokens of a title, split at letter/digit boundaries
+    (so 'asusrogxboxallyx20' -> asus/rog/xbox/ally/x/20). CJK is dropped on
+    purpose: rewritten headlines keep product tokens but rarely the same CJK
+    phrasing. Returns a frozenset."""
+    if not title:
+        return frozenset()
+    return frozenset(_TOKEN_SPLIT_RE.findall((title or "").lower()))
+
+
+def _tokens_meaningful(toks) -> bool:
+    if not toks or len(toks) < MIN_TOKENS_FOR_CONTAIN:
+        return False
+    return any(len(t) >= _MIN_TOKEN_CHARS for t in toks)
+
+
+def _token_containment(a, b) -> float:
+    """Fraction of the *shorter* token set covered by the longer one."""
+    if not a or not b:
+        return 0.0
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return len(shorter & longer) / len(shorter)
+
 
 def _norm_title_key(title: str) -> str:
     """Strict normalized title for exact-match fast path. Lowercase, strip
@@ -713,6 +760,9 @@ def load_sent_stories():
                 if rec.get("ts", 0) < cutoff:
                     continue
                 rec["_sig"] = _story_signature(rec.get("title", ""))
+                # Token set covers both the (possibly AI-translated) sent title
+                # and the original RSS title for cross-language matching.
+                rec["_toks"] = _significant_tokens(rec.get("title", "")) | _significant_tokens(rec.get("orig_title", ""))
                 out.append(rec)
         print(f"Loaded {len(out)} sent stories within last {DEDUP_WINDOW_HOURS}h (window dedup)")
     except Exception as e:
@@ -732,6 +782,7 @@ def append_sent_story(url: str, title: str, source: str):
             "title": title or "",
             "title_key": _norm_title_key(title or ""),
             "source": source or "",
+            "toks": sorted(_significant_tokens(title or "")),
         }
         with open(SENT_STORIES_FILE, 'a', encoding='utf-8') as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -741,17 +792,25 @@ def append_sent_story(url: str, title: str, source: str):
 
 def is_similar_to_sent(title: str, sent_stories):
     """Return the matching sent record if a similar story was already pushed,
-    else None. Uses exact title_key fast path then bigram Jaccard."""
+    else None. Checks, in order: exact title_key, token containment, then
+    bigram Jaccard."""
     if not title or not sent_stories:
         return None
     key = _norm_title_key(title)
     if not key:
         return None
     sig = _story_signature(title)
+    toks = _significant_tokens(title)
+    check_contain = _tokens_meaningful(toks)
     short_title = len(key) < MIN_TITLE_LEN_FOR_SIM
     for rec in sent_stories:
         if key and rec.get("title_key") == key:
             return rec
+        if check_contain:
+            rec_toks = rec.get("_toks")
+            if rec_toks and _tokens_meaningful(rec_toks):
+                if _token_containment(toks, rec_toks) >= SIM_TOKEN_CONTAIN_THRESHOLD:
+                    return rec
         if short_title:
             continue
         rec_sig = rec.get("_sig")
@@ -771,7 +830,7 @@ def dedup_batch(items):
     if not items:
         return items
     kept = []
-    sigs = []  # list of (title_key, _sig) tuples for items we kept
+    sigs = []  # list of (title_key, _sig, _toks) tuples for items we kept
     dropped = 0
     for it in items:
         title = it.get("title", "") or ""
@@ -780,11 +839,17 @@ def dedup_batch(items):
             kept.append(it)
             continue
         sig = _story_signature(title)
+        toks = _significant_tokens(title)
+        check_contain = _tokens_meaningful(toks)
         is_dup = False
-        for k_seen, sig_seen in sigs:
+        for k_seen, sig_seen, toks_seen in sigs:
             if key == k_seen:
                 is_dup = True
                 break
+            if check_contain and _tokens_meaningful(toks_seen):
+                if _token_containment(toks, toks_seen) >= SIM_TOKEN_CONTAIN_THRESHOLD:
+                    is_dup = True
+                    break
             if len(key) >= MIN_TITLE_LEN_FOR_SIM and len(k_seen) >= MIN_TITLE_LEN_FOR_SIM:
                 if _jaccard(sig, sig_seen) >= SIM_TITLE_THRESHOLD:
                     is_dup = True
@@ -792,7 +857,7 @@ def dedup_batch(items):
         if is_dup:
             dropped += 1
             continue
-        sigs.append((key, sig))
+        sigs.append((key, sig, toks))
         kept.append(it)
     if dropped:
         print(f"🧹 In-batch similarity dedup removed {dropped} item(s); {len(kept)} remain")
@@ -3585,6 +3650,7 @@ def run_collector_loop():
                             "title_key": _norm_title_key(it.get('title', '')),
                             "source": it.get('source', ''),
                             "_sig": _story_signature(it.get('title', '')),
+                            "_toks": _significant_tokens(it.get('title', '')),
                         })
                     except Exception as e:
                         print(f"  ⚠️  Failed to record sent story for similarity dedup: {e}")
